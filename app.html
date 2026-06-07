@@ -324,11 +324,6 @@ main{flex:1;overflow:auto}
             <button onclick="resendOTP()" id="resend-btn" style="background:none;border:none;color:var(--cyan);font-size:.8rem;cursor:pointer">Resend OTP</button>
           </div>
           <div id="otp-timer" style="text-align:center;font-size:.72rem;color:var(--muted2);margin-top:6px"></div>
-          <!-- Dev hint -->
-          <div id="otp-hint" style="margin-top:10px;background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:8px 12px;text-align:center;display:none">
-            <div style="font-size:.68rem;color:var(--muted2)">Demo OTP (Dev Mode)</div>
-            <div id="otp-hint-code" style="font-size:1.2rem;font-weight:900;color:var(--cyan);letter-spacing:4px"></div>
-          </div>
         </div>
         <!-- Demo Access: Only visible if secret code provided -->
         <div id="demo-access-box" style="margin-top:14px;display:none">
@@ -397,10 +392,6 @@ main{flex:1;overflow:auto}
             <input class="otp-box" type="tel" maxlength="1" id="su-otp3" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
             <input class="otp-box" type="tel" maxlength="1" id="su-otp4" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
             <input class="otp-box" type="tel" maxlength="1" id="su-otp5" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
-          </div>
-          <div id="su-otp-hint" style="background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:8px 12px;text-align:center;margin-bottom:10px">
-            <div style="font-size:.68rem;color:var(--muted2)">Your OTP (visible during development)</div>
-            <div id="su-otp-code" style="font-size:1.2rem;font-weight:900;color:var(--cyan);letter-spacing:4px"></div>
           </div>
           <div class="ferr" id="su-otp-err"></div>
           <button class="btn-primary" id="su-verify-btn" onclick="doSignupVerifyOTP()" style="width:100%">Verify & Create Account →</button>
@@ -591,7 +582,7 @@ function switchAuth(t){
   // Reset OTP boxes
   for(var i=0;i<6;i++){ var b=document.getElementById('otp'+i); if(b){b.value='';b.style.borderColor='var(--border2)';} }
   var oe=document.getElementById('otp-err'); if(oe) oe.textContent='';
-  var oh=document.getElementById('otp-hint'); if(oh) oh.style.display='none';
+  
   var ob=document.getElementById('li-otp-btn'); if(ob){ob.textContent='Send OTP →';ob.disabled=false;}
   clearInterval(_otpTimer);
 
@@ -964,7 +955,7 @@ var _otpExpiry = 0;
 // ══════════════════════════════════════
 // OTP SENDER — BankMe Cloudflare Worker
 // ══════════════════════════════════════
-var CF_WORKER = 'https://bankme-otp.doctorramesh5.workers.dev/';
+var CF_WORKER = 'https://bankme-otp.doctorramesh5.workers.dev';
 
 function sendMsg91OTP(mobile, otp, onSuccess, onFail){
   var email = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
@@ -1005,10 +996,8 @@ function requestOTP(){
   // Find matching demo user by phone
   var matchedUser = DEMO_USERS.find(function(u){ return u.phone === mobile; });
 
-  // Generate 6-digit OTP
-  _otpGenerated = String(Math.floor(100000 + Math.random() * 900000));
   _otpMobile = mobile;
-  _otpExpiry = Date.now() + 120000; // 2 min expiry
+  _otpExpiry = Date.now() + 600000; // 10 min expiry (matches worker)
 
   // Show step 2
   document.getElementById('otp-step1').style.display = 'none';
@@ -1025,45 +1014,22 @@ function requestOTP(){
   // Start countdown timer
   startOTPTimer();
 
-  // Send real OTP via MSG91
+  // Send OTP via BankMe Worker
   var btn = document.getElementById('li-otp-btn');
   if(btn){ btn.textContent = 'Sending...'; btn.disabled = true; }
 
   var email = document.getElementById('li-email').value.trim();
-  var sentCount = 0;
-  var totalToSend = 1 + (email && /\S+@\S+\.\S+/.test(email) ? 1 : 0);
 
-  function onAllSent(){
-    sentCount++;
-    if(sentCount >= totalToSend){
-      if(btn){ btn.textContent = 'OTP Sent ✓'; btn.disabled = false; }
-    }
-  }
-
-  // SMS OTP
-  sendMsg91OTP(mobile, _otpGenerated, function(){
-    toast('📱 OTP sent to +91 ' + mobile, 's');
-    onAllSent();
+  sendMsg91OTP(mobile, null, function(){
+    toast('📱 OTP sent to +91 ' + mobile + (email ? ' & 📧 ' + email : ''), 's');
+    if(btn){ btn.textContent = 'OTP Sent ✓'; btn.disabled = false; }
   }, function(err){
-    toast('SMS error: ' + err, 'e');
+    toast('⚠️ ' + err, 'e');
     if(btn){ btn.textContent = 'Send OTP →'; btn.disabled = false; }
   });
 
-  // Email OTP (if provided)
-  if(email && /\S+@\S+\.\S+/.test(email)){
-    sendMsg91EmailOTP(email, _otpGenerated, 'Customer', function(){
-      toast('📧 OTP also sent to ' + email, 's');
-      onAllSent();
-    }, function(){ onAllSent(); });
-  }
-
-  // Show OTP hint only for demo users
-  if(matchedUser){
-    document.getElementById('otp-hint').style.display = 'block';
-    document.getElementById('otp-hint-code').textContent = _otpGenerated;
-  } else {
-    document.getElementById('otp-hint').style.display = 'none';
-  }
+  // Hide OTP hint for all users (worker generates OTP, not us)
+  
 }
 
 function initOTPBoxes(){
@@ -1120,27 +1086,25 @@ function resendOTP(){
   if(Date.now() < _otpExpiry - 90000){
     toast('Please wait before resending OTP','i'); return;
   }
-  _otpGenerated = String(Math.floor(100000 + Math.random() * 900000));
   _otpExpiry = Date.now() + 120000;
-  // Clear boxes
   for(var i=0;i<6;i++){ var b=document.getElementById('otp'+i); if(b){b.value='';b.style.borderColor='var(--border2)';} }
   document.getElementById('otp0').focus();
   startOTPTimer();
-  var matchedUser2 = DEMO_USERS.find(function(u){ return u.phone === _otpMobile; });
-  if(matchedUser2){
-    document.getElementById('otp-hint-code').textContent = _otpGenerated;
-    toast('📱 New OTP sent! (Demo: see hint)', 's');
-  } else {
-    sendMsg91OTP(_otpMobile, _otpGenerated, function(){
+
+  var email = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
+  var url = CF_WORKER + '?action=resend&phone=' + _otpMobile;
+  if(email && /\S+@\S+\.\S+/.test(email)) url += '&email=' + encodeURIComponent(email);
+
+  fetch(url, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d && d.type === 'success'){
       toast('📱 New OTP sent to +91 ' + _otpMobile, 's');
-    }, function(err){
-      toast('⚠️ Resend failed: ' + err, 'e');
-    });
-    var le2 = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
-    if(le2 && /\S+@\S+\.\S+/.test(le2)){
-      sendMsg91EmailOTP(le2, _otpGenerated, 'Customer', null, null);
+    } else {
+      toast('⚠️ Resend failed: ' + (d.message||''), 'e');
     }
-  }
+  })
+  .catch(function(){ toast('⚠️ Resend failed', 'e'); });
 }
 
 function verifyOTP(){
@@ -1150,43 +1114,33 @@ function verifyOTP(){
   err.textContent = '';
 
   if(entered.length < 6){ err.textContent = 'Enter all 6 digits'; return; }
-  if(Date.now() > _otpExpiry){ err.textContent = 'OTP expired. Please resend.'; return; }
 
   var btn = document.getElementById('otp-verify-btn');
   if(btn){ btn.textContent = 'Verifying...'; btn.disabled = true; }
 
-  // Verify via Cloudflare Worker
+  // Verify via Cloudflare Worker KV
   var url = CF_WORKER + '?action=verify&phone=' + _otpMobile + '&otp=' + entered;
   fetch(url, { method: 'GET' })
   .then(function(r){ return r.json(); })
   .then(function(d){
     console.log('Verify response:', d);
     if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
-    // Worker returns success or we also check local OTP as fallback
-    if(d && (d.type === 'success' || d.message === 'OTP verified successfully.' || entered === _otpGenerated)){
+    if(d && d.type === 'success'){
       clearInterval(_otpTimer);
       _handleOTPSuccess(_otpMobile);
     } else {
-      // Fallback: check local generated OTP (for demo users)
-      if(entered === _otpGenerated){
-        clearInterval(_otpTimer);
-        _handleOTPSuccess(_otpMobile);
-      } else {
-        err.textContent = 'Invalid OTP. Please try again.';
-        for(var i=0;i<6;i++){ var b=document.getElementById('otp'+i); if(b){b.value='';b.style.borderColor='var(--red)';} }
-        document.getElementById('otp0').focus();
+      err.textContent = d.message || 'Invalid OTP. Please try again.';
+      for(var i=0;i<6;i++){
+        var b=document.getElementById('otp'+i);
+        if(b){ b.value=''; b.style.borderColor='var(--red)'; }
       }
+      document.getElementById('otp0').focus();
     }
   })
   .catch(function(e){
+    console.warn('Verify error:', e);
     if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
-    // Fallback to local OTP check
-    if(entered === _otpGenerated){
-      clearInterval(_otpTimer);
-      _handleOTPSuccess(_otpMobile);
-    } else {
-      err.textContent = 'Verification failed. Try again.';
-    }
+    err.textContent = 'Verification failed. Please try again.';
   });
 }
 
@@ -1402,7 +1356,7 @@ function doSignupStep1(){
   document.getElementById('su-step1').style.display = 'none';
   document.getElementById('su-step2').style.display = 'block';
   document.getElementById('su-otp-num').textContent = '+91 ' + phone;
-  document.getElementById('su-otp-code').textContent = _suOtp;
+  
   document.getElementById('su-otp-err').textContent = '';
 
   // Init OTP boxes & timer
@@ -1462,7 +1416,7 @@ function suResendOTP(){
   _suOtp=String(Math.floor(100000+Math.random()*900000));
   _suOtpExpiry=Date.now()+120000;
   for(var i=0;i<6;i++){ var b=document.getElementById('su-otp'+i); if(b){b.value='';b.style.borderColor='var(--border2)';} }
-  document.getElementById('su-otp-code').textContent=_suOtp;
+  
   document.getElementById('su-otp0').focus();
   startSuOTPTimer();
   var suPhone = document.getElementById('si-phone') ? document.getElementById('si-phone').value.trim() : '';
