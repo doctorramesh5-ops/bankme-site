@@ -1,6 +1,7 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+  command = "node inject-env.js"
 
 [[redirects]]
   from = "/send-otp"

@@ -487,12 +487,12 @@ main{flex:1;overflow:auto}
 var auth = null, db = null;
 try {
   var _fbCfg = {
-    apiKey:'AIzaSyAQ1Cchvt21GIVJIYHXBjBX7nI52tT6Zdc',
-    authDomain:'paype-technologies.firebaseapp.com',
-    projectId:'paype-technologies',
-    storageBucket:'paype-technologies.firebasestorage.app',
-    messagingSenderId:'4797605407',
-    appId:'1:4797605407:web:24c5e516f8ee12958e172a'
+    apiKey: '__FIREBASE_API_KEY__',
+    authDomain: '__FIREBASE_AUTH_DOMAIN__',
+    projectId: '__FIREBASE_PROJECT_ID__',
+    storageBucket: '__FIREBASE_STORAGE_BUCKET__',
+    messagingSenderId: '__FIREBASE_MESSAGING_SENDER_ID__',
+    appId: '__FIREBASE_APP_ID__'
   };
   if(typeof firebase !== 'undefined'){
     if(!firebase.apps.length) firebase.initializeApp(_fbCfg);
