@@ -7245,89 +7245,239 @@ function renderCommission(){
   var el = document.getElementById('page-commission');
   if(!el) return;
 
-  var services = [
-    {name:'AEPS / Cash Withdrawal', admin:1.0, wl:0.15, sd:0.20, dist:0.25, ret:0.30, cust:0},
-    {name:'DMT / Money Transfer',   admin:0.8, wl:0.10, sd:0.15, dist:0.20, ret:0.25, cust:0},
-    {name:'Recharge (Mobile)',       admin:2.0, wl:0.30, sd:0.40, dist:0.50, ret:0.60, cust:0},
-    {name:'Bill Payment (BBPS)',     admin:1.5, wl:0.20, sd:0.30, dist:0.35, ret:0.45, cust:0},
-    {name:'Insurance Premium',       admin:5.0, wl:1.00, sd:1.50, dist:2.00, ret:2.50, cust:0},
-    {name:'Loan Processing',         admin:3.0, wl:0.50, sd:0.75, dist:1.00, ret:1.25, cust:0},
-    {name:'PAN Card (NSDL)',         admin:30,  wl:5,    sd:8,    dist:10,   ret:12,   cust:0, flat:true},
-    {name:'Travel Booking',          admin:2.5, wl:0.40, sd:0.50, dist:0.60, ret:0.75, cust:0},
-    {name:'Demat Account',           admin:4.0, wl:0.75, sd:1.00, dist:1.25, ret:1.50, cust:0},
-    {name:'Mutual Fund',             admin:1.0, wl:0.20, sd:0.25, dist:0.30, ret:0.40, cust:0},
-    {name:'UPI Cash In',             admin:0.5, wl:0.05, sd:0.08, dist:0.10, ret:0.12, cust:0},
-    {name:'UPI Cash Out',            admin:0.5, wl:0.05, sd:0.08, dist:0.10, ret:0.12, cust:0},
-  ];
+  var isAdmin = CU.role==='admin' || CU.role==='whitelabel';
 
-  var roles = [
-    {key:'admin', label:'Admin',       color:'#ef4444'},
-    {key:'wl',    label:'White Label', color:'#8b5cf6'},
-    {key:'sd',    label:'Super Dist',  color:'#f59e0b'},
-    {key:'dist',  label:'Distributor', color:'#06b6d4'},
-    {key:'ret',   label:'Retailer',    color:'#10b981'},
-  ];
+  // ── Load saved commission data ──
+  if(!window._commData){
+    window._commData = {
+      aeps: [
+        {slab:'₹100 – ₹999',    ret:'₹2.00',  dist:'₹1.50', sd:'₹1.00', wl:'₹0.50', payin:'-'},
+        {slab:'₹1,000 – ₹1,499',ret:'₹3.00',  dist:'₹2.50', sd:'₹2.00', wl:'₹1.00', payin:'-'},
+        {slab:'₹1,500 – ₹1,999',ret:'₹4.50',  dist:'₹3.50', sd:'₹2.50', wl:'₹1.50', payin:'-'},
+        {slab:'₹2,000 – ₹2,499',ret:'₹5.50',  dist:'₹4.50', sd:'₹3.00', wl:'₹2.00', payin:'-'},
+        {slab:'₹2,500 – ₹2,999',ret:'₹6.00',  dist:'₹5.00', sd:'₹3.50', wl:'₹2.00', payin:'-'},
+        {slab:'₹3,000 – ₹10,000',ret:'₹13.00', dist:'₹10.00',sd:'₹7.00', wl:'₹4.00', payin:'-'},
+      ],
+      dmt: [
+        {slab:'₹100 – ₹999',    ret:'₹5.00',  dist:'₹3.50', sd:'₹2.00', wl:'₹1.00', payin:'₹3.00'},
+        {slab:'₹1,000 – ₹4,999',ret:'₹10.00', dist:'₹7.00', sd:'₹4.00', wl:'₹2.00', payin:'₹5.00'},
+        {slab:'₹5,000 – ₹9,999',ret:'₹25.00', dist:'₹18.00',sd:'₹10.00',wl:'₹5.00', payin:'₹8.00'},
+        {slab:'₹10,000 – ₹25,000',ret:'₹50.00',dist:'₹35.00',sd:'₹20.00',wl:'₹10.00',payin:'₹12.00'},
+      ],
+      other: [
+        {svc:'Recharge (Mobile)',  type:'PayOut', ret:'2.5%',  dist:'2.0%',  sd:'1.5%',  wl:'0.5%',  payin:'-',       note:'On MRP'},
+        {svc:'Bill Payment (BBPS)',type:'PayOut', ret:'₹5',    dist:'₹3',    sd:'₹2',    wl:'₹1',    payin:'₹2',      note:'Per bill'},
+        {svc:'UPI Cash In',        type:'PayIn',  ret:'-',     dist:'-',     sd:'-',     wl:'-',     payin:'0.25%',   note:'On amount'},
+        {svc:'UPI Cash Out',       type:'PayOut', ret:'₹4',    dist:'₹3',    sd:'₹2',    wl:'₹0.50', payin:'0.5%',    note:'Per txn'},
+        {svc:'Insurance Premium',  type:'PayOut', ret:'2.5%',  dist:'2.0%',  sd:'1.5%',  wl:'1.0%',  payin:'-',       note:'On premium'},
+        {svc:'Loan Processing',    type:'PayOut', ret:'1.25%', dist:'1.0%',  sd:'0.75%', wl:'0.5%',  payin:'-',       note:'On loan'},
+        {svc:'PAN Card (NSDL)',    type:'PayOut', ret:'₹12',   dist:'₹10',   sd:'₹8',    wl:'₹5',    payin:'₹30',     note:'Flat/PAN'},
+        {svc:'Travel Booking',     type:'PayOut', ret:'0.75%', dist:'0.60%', sd:'0.50%', wl:'0.40%', payin:'-',       note:'On fare'},
+        {svc:'Demat Account',      type:'PayOut', ret:'₹150',  dist:'₹125',  sd:'₹100',  wl:'₹75',   payin:'-',       note:'Per account'},
+        {svc:'Mutual Fund',        type:'PayOut', ret:'0.40%', dist:'0.30%', sd:'0.25%', wl:'0.20%', payin:'-',       note:'On invest'},
+      ]
+    };
+    // Try load from localStorage
+    try{
+      var saved = JSON.parse(localStorage.getItem('bankme_commdata')||'null');
+      if(saved) window._commData = saved;
+    }catch(e){}
+  }
 
-  var rows = services.map(function(s){
+  var inp = function(id, val, w){
+    return '<input type="text" id="cd_'+id+'" value="'+val+'" '
+      + (isAdmin ? '' : 'readonly ')
+      + 'style="width:'+(w||'70px')+';background:var(--bg3);border:1px solid var(--border);'
+      + 'border-radius:6px;padding:4px 6px;color:var(--text);font-size:.72rem;font-weight:600;'
+      + 'text-align:center;box-sizing:border-box'+(isAdmin?';cursor:text':';cursor:default;opacity:.8')+'">';
+  };
+
+  // ── AEPS Table ──
+  var aepsRows = window._commData.aeps.map(function(s,i){
     return '<tr style="border-bottom:1px solid var(--border)">'
-      + '<td style="padding:10px;font-size:.8rem;font-weight:600;color:var(--text)">' + s.name + '</td>'
-      + roles.map(function(r){
-          var val = s[r.key];
-          var display = s.flat ? '₹'+val : val+'%';
-          return '<td style="padding:10px;text-align:center"><span style="background:'+r.color+'18;color:'+r.color+';border-radius:6px;padding:3px 8px;font-size:.78rem;font-weight:700">'+display+'</span></td>';
-        }).join('')
+      + '<td style="padding:6px 8px">'+inp('aeps_'+i+'_slab', s.slab, '130px')+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('aeps_'+i+'_ret',  s.ret)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('aeps_'+i+'_dist', s.dist)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('aeps_'+i+'_sd',   s.sd)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('aeps_'+i+'_wl',   s.wl)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('aeps_'+i+'_payin',s.payin)+'</td>'
+      + (isAdmin ? '<td style="padding:6px 8px;text-align:center">'
+        + '<button onclick="deleteCommRow(\'aeps\','+i+')" style="padding:2px 8px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#f87171;font-size:.68rem;cursor:pointer">✕</button>'
+        + '</td>' : '')
       + '</tr>';
   }).join('');
 
-  var headerCols = roles.map(function(r){
-    return '<th style="padding:10px;text-align:center;font-size:.7rem;color:'+r.color+';white-space:nowrap">'+r.label+'</th>';
+  // ── DMT Table ──
+  var dmtRows = window._commData.dmt.map(function(s,i){
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:6px 8px">'+inp('dmt_'+i+'_slab', s.slab, '130px')+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('dmt_'+i+'_ret',  s.ret)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('dmt_'+i+'_dist', s.dist)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('dmt_'+i+'_sd',   s.sd)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('dmt_'+i+'_wl',   s.wl)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('dmt_'+i+'_payin',s.payin)+'</td>'
+      + (isAdmin ? '<td style="padding:6px 8px;text-align:center">'
+        + '<button onclick="deleteCommRow(\'dmt\','+i+')" style="padding:2px 8px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#f87171;font-size:.68rem;cursor:pointer">✕</button>'
+        + '</td>' : '')
+      + '</tr>';
   }).join('');
 
+  // ── Other Services Table ──
+  var otherRows = window._commData.other.map(function(s,i){
+    var typeColor = s.type==='PayOut'?'#10b981':'#ef4444';
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:6px 8px">'+inp('oth_'+i+'_svc',  s.svc, '120px')+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'
+      + (isAdmin
+        ? '<select id="cd_oth_'+i+'_type" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 5px;color:'+typeColor+';font-size:.68rem;font-weight:700">'
+          + '<option value="PayOut"'+(s.type==='PayOut'?' selected':'')+'>PayOut</option>'
+          + '<option value="PayIn"'+(s.type==='PayIn'?' selected':'')+'>PayIn</option>'
+          + '</select>'
+        : '<span style="background:'+typeColor+'18;color:'+typeColor+';border-radius:6px;padding:2px 7px;font-size:.68rem;font-weight:700">'+s.type+'</span>')
+      + '</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('oth_'+i+'_ret',  s.ret)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('oth_'+i+'_dist', s.dist)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('oth_'+i+'_sd',   s.sd)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('oth_'+i+'_wl',   s.wl)+'</td>'
+      + '<td style="padding:6px 8px;text-align:center">'+inp('oth_'+i+'_payin',s.payin)+'</td>'
+      + '<td style="padding:6px 8px">'+inp('oth_'+i+'_note', s.note, '80px')+'</td>'
+      + (isAdmin ? '<td style="padding:6px 8px;text-align:center">'
+        + '<button onclick="deleteCommRow(\'other\','+i+')" style="padding:2px 8px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#f87171;font-size:.68rem;cursor:pointer">✕</button>'
+        + '</td>' : '')
+      + '</tr>';
+  }).join('');
+
+  var thStyle = 'padding:8px 8px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;';
+  var slabCols = '<th style="'+thStyle+'text-align:left;color:var(--cyan)">SLAB (₹)</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#10b981">RETAILER<br>PAYOUT</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#06b6d4">DISTRIBUTOR<br>PAYOUT</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#f59e0b">SUPER DIST<br>PAYOUT</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#8b5cf6">WHITE LABEL<br>PAYOUT</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#ef4444">PAYIN<br>CHARGE</th>'
+    + (isAdmin ? '<th style="'+thStyle+'text-align:center;color:var(--muted2)">DEL</th>' : '');
+
+  var addRowBtn = function(svc){
+    return isAdmin ? '<button onclick="addCommRow(\''+svc+'\')" style="margin-top:8px;padding:5px 14px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);border-radius:8px;color:var(--cyan);font-size:.72rem;font-weight:700;cursor:pointer">+ Add Slab Row</button>' : '';
+  };
+
   el.innerHTML = '<div class="page-title">💹 Commission Structure</div>'
-    + '<div class="page-sub">Service-wise commission rates across all network levels</div>'
-    + '<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.78rem;color:var(--green)">'
-    + '💡 Rates shown are <b>Admin earnings</b> and <b>per-level payouts</b>. All % rates are per transaction. Flat rates (₹) are fixed per transaction.'
+    + '<div class="page-sub">All values are editable — click any cell to edit, then Save</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+    + '<span style="background:rgba(16,185,129,.1);color:#10b981;border-radius:100px;padding:4px 12px;font-size:.72rem;font-weight:700">● PayOut = Commission paid to network</span>'
+    + '<span style="background:rgba(239,68,68,.1);color:#ef4444;border-radius:100px;padding:4px 12px;font-size:.72rem;font-weight:700">● PayIn = Charge collected from customer</span>'
     + '</div>'
-    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto;margin-bottom:18px">'
-    + '<table style="width:100%;border-collapse:collapse;min-width:600px">'
+
+    // AEPS
+    + '<div style="margin-bottom:18px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    + '<div style="width:4px;height:20px;background:#8b5cf6;border-radius:2px"></div>'
+    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:#8b5cf6">🏦 AEPS / Cash Withdrawal</div>'
+    + '</div>'
+    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:520px">'
+    + '<thead><tr style="background:var(--bg3)">'+slabCols+'</tr></thead>'
+    + '<tbody>'+aepsRows+'</tbody></table></div>'
+    + addRowBtn('aeps') + '</div>'
+
+    // DMT
+    + '<div style="margin-bottom:18px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    + '<div style="width:4px;height:20px;background:#f43f5e;border-radius:2px"></div>'
+    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:#f43f5e">💸 DMT / Money Transfer</div>'
+    + '</div>'
+    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:520px">'
+    + '<thead><tr style="background:var(--bg3)">'+slabCols+'</tr></thead>'
+    + '<tbody>'+dmtRows+'</tbody></table></div>'
+    + addRowBtn('dmt') + '</div>'
+
+    // Other Services
+    + '<div style="margin-bottom:18px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    + '<div style="width:4px;height:20px;background:#06b6d4;border-radius:2px"></div>'
+    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:#06b6d4">📊 Other Services</div>'
+    + '</div>'
+    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:680px">'
     + '<thead><tr style="background:var(--bg3)">'
-    + '<th style="padding:10px;text-align:left;font-size:.7rem;color:var(--muted2)">SERVICE</th>'
-    + headerCols
-    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
-    + (CU.role === 'admin' ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">'
-    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:12px">✏️ Edit Commission Rates</div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:12px">Select a service and role to update commission rate. Changes apply network-wide.</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">SERVICE</div>'
-    + '<select id="comm-svc" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem">'
-    + services.map(function(s){ return '<option>'+s.name+'</option>'; }).join('')
-    + '</select></div>'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">ROLE</div>'
-    + '<select id="comm-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem">'
-    + roles.map(function(r){ return '<option value="'+r.key+'">'+r.label+'</option>'; }).join('')
-    + '</select></div>'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">NEW RATE</div>'
-    + '<input type="number" id="comm-rate" placeholder="e.g. 0.50" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem"></div>'
-    + '<button onclick="saveCommissionRate()" style="padding:8px 16px;background:var(--green);border:none;border-radius:8px;color:#000;font-weight:700;font-size:.78rem;cursor:pointer">Save</button>'
-    + '</div></div>' : '');
+    + '<th style="'+thStyle+'text-align:left;color:var(--muted2)">SERVICE</th>'
+    + '<th style="'+thStyle+'text-align:center;color:var(--muted2)">TYPE</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#10b981">RETAILER</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#06b6d4">DISTRIBUTOR</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#f59e0b">SUPER DIST</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#8b5cf6">WHITE LABEL</th>'
+    + '<th style="'+thStyle+'text-align:center;color:#ef4444">PAYIN</th>'
+    + '<th style="'+thStyle+'text-align:left;color:var(--muted2)">NOTE</th>'
+    + (isAdmin ? '<th style="'+thStyle+'text-align:center;color:var(--muted2)">DEL</th>' : '')
+    + '</tr></thead>'
+    + '<tbody>'+otherRows+'</tbody></table></div>'
+    + (isAdmin ? '<button onclick="addCommRow(\'other\')" style="margin-top:8px;padding:5px 14px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);border-radius:8px;color:var(--cyan);font-size:.72rem;font-weight:700;cursor:pointer">+ Add Service Row</button>' : '')
+    + '</div>'
+
+    // Save button
+    + (isAdmin ? '<div style="text-align:center;margin-top:8px">'
+    + '<button onclick="saveAllCommission()" style="padding:12px 36px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;border-radius:12px;color:#000;font-weight:700;font-size:.9rem;cursor:pointer">💾 Save All Commission Data</button>'
+    + '</div>' : '');
 }
 
-function saveCommissionRate(){
-  var svc  = document.getElementById('comm-svc').value;
-  var role = document.getElementById('comm-role').value;
-  var rate = document.getElementById('comm-rate').value;
-  if(!rate){ toast('Enter a rate','e'); return; }
-  // Save to Firestore commission_config
-  if(db){
-    db.collection('bankme_config').doc('commission').set({
-      [svc + '_' + role]: parseFloat(rate)
-    }, { merge: true })
-    .then(function(){ toast('✅ Commission rate updated!','s'); renderCommission(); })
-    .catch(function(){ toast('Saved locally (Firestore update failed)','i'); });
-  } else {
-    toast('✅ Rate noted (connect Firestore to persist)','i');
-  }
+function collectCommissionData(){
+  var d = window._commData;
+  d.aeps.forEach(function(s,i){
+    s.slab  = (document.getElementById('cd_aeps_'+i+'_slab') ||{}).value || s.slab;
+    s.ret   = (document.getElementById('cd_aeps_'+i+'_ret')  ||{}).value || s.ret;
+    s.dist  = (document.getElementById('cd_aeps_'+i+'_dist') ||{}).value || s.dist;
+    s.sd    = (document.getElementById('cd_aeps_'+i+'_sd')   ||{}).value || s.sd;
+    s.wl    = (document.getElementById('cd_aeps_'+i+'_wl')   ||{}).value || s.wl;
+    s.payin = (document.getElementById('cd_aeps_'+i+'_payin')||{}).value || s.payin;
+  });
+  d.dmt.forEach(function(s,i){
+    s.slab  = (document.getElementById('cd_dmt_'+i+'_slab') ||{}).value || s.slab;
+    s.ret   = (document.getElementById('cd_dmt_'+i+'_ret')  ||{}).value || s.ret;
+    s.dist  = (document.getElementById('cd_dmt_'+i+'_dist') ||{}).value || s.dist;
+    s.sd    = (document.getElementById('cd_dmt_'+i+'_sd')   ||{}).value || s.sd;
+    s.wl    = (document.getElementById('cd_dmt_'+i+'_wl')   ||{}).value || s.wl;
+    s.payin = (document.getElementById('cd_dmt_'+i+'_payin')||{}).value || s.payin;
+  });
+  d.other.forEach(function(s,i){
+    s.svc   = (document.getElementById('cd_oth_'+i+'_svc')  ||{}).value || s.svc;
+    s.type  = (document.getElementById('cd_oth_'+i+'_type') ||{}).value || s.type;
+    s.ret   = (document.getElementById('cd_oth_'+i+'_ret')  ||{}).value || s.ret;
+    s.dist  = (document.getElementById('cd_oth_'+i+'_dist') ||{}).value || s.dist;
+    s.sd    = (document.getElementById('cd_oth_'+i+'_sd')   ||{}).value || s.sd;
+    s.wl    = (document.getElementById('cd_oth_'+i+'_wl')   ||{}).value || s.wl;
+    s.payin = (document.getElementById('cd_oth_'+i+'_payin')||{}).value || s.payin;
+    s.note  = (document.getElementById('cd_oth_'+i+'_note') ||{}).value || s.note;
+  });
 }
+
+function saveAllCommission(){
+  collectCommissionData();
+  try{ localStorage.setItem('bankme_commdata', JSON.stringify(window._commData)); }catch(e){}
+  if(db){
+    db.collection('bankme_config').doc('commission_v2').set(window._commData)
+    .then(function(){ toast('✅ Commission data saved!','s'); })
+    .catch(function(){ toast('✅ Saved to local storage','s'); });
+  } else {
+    toast('✅ Commission data saved!','s');
+  }
+  renderCommission();
+}
+
+function addCommRow(type){
+  collectCommissionData();
+  if(type==='aeps') window._commData.aeps.push({slab:'₹0 – ₹0', ret:'₹0', dist:'₹0', sd:'₹0', wl:'₹0', payin:'-'});
+  else if(type==='dmt') window._commData.dmt.push({slab:'₹0 – ₹0', ret:'₹0', dist:'₹0', sd:'₹0', wl:'₹0', payin:'-'});
+  else window._commData.other.push({svc:'New Service', type:'PayOut', ret:'-', dist:'-', sd:'-', wl:'-', payin:'-', note:''});
+  renderCommission();
+}
+
+function deleteCommRow(type, idx){
+  collectCommissionData();
+  window._commData[type].splice(idx, 1);
+  renderCommission();
+}
+
+function saveCommissionRate(){ saveAllCommission(); }
 
 // ══════════════════════════════════════
 // API KEYS PAGE (Admin only)
