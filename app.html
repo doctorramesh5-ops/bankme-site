@@ -440,6 +440,7 @@ main{flex:1;overflow:auto}
       <button class="nb" id="nb-rtai" onclick="goPage('rtai')" style="display:none">🛡️ RTAI</button>
       <button class="nb" id="nb-fraud" onclick="goPage('fraud')" style="display:none">🔍 Fraud Engine</button>
       <button class="nb" id="nb-reconcile" onclick="goPage('reconcile')" style="display:none">📒 Reconcile</button>
+      <button class="nb" id="nb-dispute" onclick="goPage('dispute')" style="display:none">⚖️ Disputes</button>
       <button class="nb" id="nb-txnhistory" onclick="goPage('txnhistory')">📊 Transactions</button>
       <button class="nb" id="nb-commission" onclick="goPage('commission')" style="display:none">💹 Commission</button>
       <button class="nb" id="nb-apikeys" onclick="goPage('apikeys')" style="display:none">🔑 API Keys</button>
@@ -462,6 +463,7 @@ main{flex:1;overflow:auto}
     <div id="page-rtai" class="page" style="display:none"></div>
 <div id="page-fraud" class="page" style="display:none"></div>
 <div id="page-reconcile" class="page" style="display:none"></div>
+<div id="page-dispute" class="page" style="display:none"></div>
     <div id="page-txnhistory" class="page" style="display:none"></div>
     <div id="page-commission" class="page" style="display:none"></div>
     <div id="page-apikeys" class="page" style="display:none"></div>
@@ -1623,6 +1625,7 @@ function showApp(){
   document.getElementById('nb-rtai').style.display=isAdminWL?'':'none';
     document.getElementById('nb-fraud').style.display = (role==='admin'||role==='whitelabel'||role==='superdist') ? '' : 'none';
     document.getElementById('nb-reconcile').style.display = (role==='admin'||role==='whitelabel') ? '' : 'none';
+  document.getElementById('nb-dispute').style.display = '';
   document.getElementById('nb-assign').style.display=isAdminWL?'':'none';
   document.getElementById('nb-txnhistory').style.display='';
   document.getElementById('nb-commission').style.display=isAdminWL?'':'none';
@@ -1637,7 +1640,7 @@ function showApp(){
 // NAVIGATION
 // ══════════════════════════════════════
 function goPage(pg){
-  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','txnhistory','commission','apikeys','chat','wallet','network','profile'].forEach(function(p){
+  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','dispute','txnhistory','commission','apikeys','chat','wallet','network','profile'].forEach(function(p){
     var el=document.getElementById('page-'+p);
     var nb=document.getElementById('nb-'+p);
     if(el) el.style.display=p===pg?(p==='chat'?'flex':'block'):'none';
@@ -5363,84 +5366,283 @@ async function renderTxnHistory(){
   var el=document.getElementById('page-txnhistory');
   var role=CU.role;
   var isAdminWL=['admin','whitelabel'].indexOf(role)>=0;
-  el.innerHTML='<div class="page-title">📊 Transaction History</div>'
-    +'<div class="page-sub">'+(isAdminWL?'All network transactions':'Your complete transaction history')+'</div>'
-    +'<div id="th-filters" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
-    +'<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;text-transform:uppercase;margin-bottom:4px">Service</div>'
-    +'<select id="th-svc" onchange="applyTHFilters()" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem;appearance:none">'
-    +'<option value="all">All Services</option><option value="wallet">💰 Wallet</option>'
-    +SERVICES.map(function(s){return'<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>';}).join('')
-    +'</select></div>'
-    +'<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;text-transform:uppercase;margin-bottom:4px">Month</div>'
-    +'<select id="th-month" onchange="applyTHFilters()" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem;appearance:none">'
-    +'<option value="all">All Months</option>'
-    +['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(function(m){return'<option value="'+m+'">'+m+' 2025</option>';}).join('')
-    +'</select></div>'
-    +'<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;text-transform:uppercase;margin-bottom:4px">Period</div>'
-    +'<select id="th-period" onchange="applyTHFilters()" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem;appearance:none">'
-    +'<option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option><option value="3month">Last 3 Months</option>'
-    +'</select></div></div>'
-    +'<div id="th-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px"></div>'
-    +'<div id="th-list"></div>';
+
+  // ── Sub-service map ──
+  var SUB_SERVICES = {
+    wallet:    ['All','Add Money','Transfer','Withdraw','Refund'],
+    recharge:  ['All','Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
+    bbps:      ['All','Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
+    aeps:      ['All','Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
+    dmt:       ['All','IMPS Transfer','NEFT Transfer','Account Verify'],
+    upi:       ['All','UPI Cash In','UPI Cash Out','UPI Transfer'],
+    insurance: ['All','Life Insurance','Health Insurance','Vehicle Insurance','Term Plan'],
+    loan:      ['All','Personal Loan','Home Loan','Vehicle Loan','Business Loan'],
+    pan:       ['All','New PAN','PAN Reprint','PAN Correction'],
+    travel:    ['All','Flight Booking','Bus Booking','Hotel Booking','Train Booking'],
+    demat:     ['All','Demat Open','Trading Account'],
+    mf:        ['All','SIP Start','Lump Sum','Redemption'],
+  };
+
+  // ── Fiscal Year helper ──
+  var currentYear = new Date().getFullYear();
+  var fiscalYears = [];
+  for(var y = currentYear; y >= 2023; y--){
+    fiscalYears.push({label:'FY '+y+'-'+(y+1), val:'fy_'+y});
+  }
+
+  // ── Quarter helper ──
+  var quarters = [
+    {label:'Q1: Apr–Jun', val:'q1'},
+    {label:'Q2: Jul–Sep', val:'q2'},
+    {label:'Q3: Oct–Dec', val:'q3'},
+    {label:'Q4: Jan–Mar', val:'q4'},
+  ];
+
+  var selStyle = 'width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);font-size:.75rem;appearance:none';
+  var lblStyle = 'font-size:.62rem;color:var(--muted2);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px';
+
+  el.innerHTML = '<div class="page-title">📊 Transaction History</div>'
+    + '<div class="page-sub">'+(isAdminWL?'All network transactions':'Your complete transaction history')+'</div>'
+
+    // ── Row 1: Service + Sub-service ──
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    + '<div><div style="'+lblStyle+'">Service</div>'
+    + '<select id="th-svc" onchange="updateSubServices();applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Services</option>'
+    + '<option value="wallet">💰 Wallet</option>'
+    + SERVICES.map(function(s){return'<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>';}).join('')
+    + '</select></div>'
+    + '<div><div style="'+lblStyle+'">Sub-Service</div>'
+    + '<select id="th-subsvc" onchange="applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Sub-Services</option>'
+    + '</select></div></div>'
+
+    // ── Row 2: Fiscal Year + Quarter ──
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    + '<div><div style="'+lblStyle+'">Financial Year</div>'
+    + '<select id="th-fy" onchange="applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Years</option>'
+    + fiscalYears.map(function(y){return'<option value="'+y.val+'">'+y.label+'</option>';}).join('')
+    + '</select></div>'
+    + '<div><div style="'+lblStyle+'">Quarter</div>'
+    + '<select id="th-quarter" onchange="applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Quarters</option>'
+    + quarters.map(function(q){return'<option value="'+q.val+'">'+q.label+'</option>';}).join('')
+    + '</select></div></div>'
+
+    // ── Row 3: Month + Period ──
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    + '<div><div style="'+lblStyle+'">Month</div>'
+    + '<select id="th-month" onchange="applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Months</option>'
+    + ['January','February','March','April','May','June','July','August','September','October','November','December']
+      .map(function(m,i){return'<option value="'+(i+1)+'">'+m+'</option>';}).join('')
+    + '</select></div>'
+    + '<div><div style="'+lblStyle+'">Quick Period</div>'
+    + '<select id="th-period" onchange="applyTHFilters()" style="'+selStyle+'">'
+    + '<option value="all">All Time</option>'
+    + '<option value="today">Today</option>'
+    + '<option value="week">This Week</option>'
+    + '<option value="month">This Month</option>'
+    + '<option value="3month">Last 3 Months</option>'
+    + '<option value="6month">Last 6 Months</option>'
+    + '<option value="year">This Year</option>'
+    + '</select></div></div>'
+
+    // ── Row 4: Custom Date Range ──
+    + '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:14px;align-items:end">'
+    + '<div><div style="'+lblStyle+'">From Date</div>'
+    + '<input type="date" id="th-from" onchange="applyTHFilters()" style="'+selStyle+'"></div>'
+    + '<div><div style="'+lblStyle+'">To Date</div>'
+    + '<input type="date" id="th-to" onchange="applyTHFilters()" style="'+selStyle+'"></div>'
+    + '<button onclick="clearTHFilters()" style="padding:7px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--muted2);font-size:.72rem;cursor:pointer;white-space:nowrap">Clear ✕</button>'
+    + '</div>'
+
+    + '<div id="th-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:14px"></div>'
+    + '<div id="th-list"></div>';
+
   // Load network txns for admin/wl
   if(isAdminWL){
     try{
-      var snap=await db.collection('bankme_users').get();
-      var netTxns=[];
+      var snap = await db.collection('bankme_users').get();
+      var netTxns = [];
       snap.forEach(function(d){
-        var u=d.data();
-        (u.txns||[]).forEach(function(t){netTxns.push(Object.assign({},t,{userName:u.name,userRole:u.role,userPhone:u.phone}));});
+        var u = d.data();
+        (u.txns||[]).forEach(function(t){
+          netTxns.push(Object.assign({},t,{userName:u.name,userRole:u.role,userPhone:u.phone}));
+        });
       });
-      window._allNetworkTxns=netTxns;
-    }catch(e){window._allNetworkTxns=[];}
+      window._allNetworkTxns = netTxns;
+    }catch(e){ window._allNetworkTxns=[]; }
   }
+
+  applyTHFilters();
+}
+
+function updateSubServices(){
+  var svc = document.getElementById('th-svc').value;
+  var subEl = document.getElementById('th-subsvc');
+  if(!subEl) return;
+  var SUB_SERVICES = {
+    wallet:    ['Add Money','Transfer','Withdraw','Refund'],
+    recharge:  ['Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
+    bbps:      ['Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
+    aeps:      ['Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
+    dmt:       ['IMPS Transfer','NEFT Transfer','Account Verify'],
+    upi:       ['UPI Cash In','UPI Cash Out','UPI Transfer'],
+    insurance: ['Life Insurance','Health Insurance','Vehicle Insurance','Term Plan'],
+    loan:      ['Personal Loan','Home Loan','Vehicle Loan','Business Loan'],
+    pan:       ['New PAN','PAN Reprint','PAN Correction'],
+    travel:    ['Flight Booking','Bus Booking','Hotel Booking','Train Booking'],
+    demat:     ['Demat Open','Trading Account'],
+    mf:        ['SIP Start','Lump Sum','Redemption'],
+  };
+  var subs = SUB_SERVICES[svc] || [];
+  subEl.innerHTML = '<option value="all">All Sub-Services</option>'
+    + subs.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('');
+}
+
+function clearTHFilters(){
+  ['th-svc','th-subsvc','th-fy','th-quarter','th-month','th-period','th-from','th-to'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){ el.value = el.tagName==='SELECT' ? 'all' : ''; }
+  });
   applyTHFilters();
 }
 
 function applyTHFilters(){
-  var svcF=document.getElementById('th-svc')?.value||'all';
-  var monthF=document.getElementById('th-month')?.value||'all';
-  var periodF=document.getElementById('th-period')?.value||'all';
-  var role=CU.role;
-  var isAdminWL=['admin','whitelabel'].indexOf(role)>=0;
-  var baseTxns=isAdminWL?(window._allNetworkTxns||[]):TXN_HISTORY.slice();
-  var now=new Date();
-  var filtered=baseTxns.filter(function(t){
-    if(svcF!=='all'&&t.service!==svcF) return false;
-    if(monthF!=='all'&&t.date&&t.date.indexOf(monthF)===-1) return false;
-    if(periodF!=='all'&&t.date){
-      var d=new Date(t.date); var diff=(now-d)/(86400000);
-      if(periodF==='today'&&diff>1) return false;
-      if(periodF==='week'&&diff>7) return false;
-      if(periodF==='month'&&diff>30) return false;
-      if(periodF==='3month'&&diff>90) return false;
+  var svcF    = (document.getElementById('th-svc')    ||{}).value||'all';
+  var subF    = (document.getElementById('th-subsvc') ||{}).value||'all';
+  var fyF     = (document.getElementById('th-fy')     ||{}).value||'all';
+  var qF      = (document.getElementById('th-quarter')||{}).value||'all';
+  var monthF  = (document.getElementById('th-month')  ||{}).value||'all';
+  var periodF = (document.getElementById('th-period') ||{}).value||'all';
+  var fromF   = (document.getElementById('th-from')   ||{}).value||'';
+  var toF     = (document.getElementById('th-to')     ||{}).value||'';
+
+  var role = CU.role;
+  var isAdminWL = ['admin','whitelabel'].indexOf(role)>=0;
+  var baseTxns = isAdminWL ? (window._allNetworkTxns||[]) : TXN_HISTORY.slice();
+  var now = new Date();
+
+  var filtered = baseTxns.filter(function(t){
+    // Service filter
+    if(svcF!=='all' && t.service!==svcF) return false;
+    // Sub-service filter
+    if(subF!=='all' && t.subService && t.subService!==subF) return false;
+
+    var txnDate = t.date ? new Date(t.date) : null;
+    if(!txnDate || isNaN(txnDate)) return true;
+
+    // Fiscal Year filter (Apr-Mar)
+    if(fyF!=='all'){
+      var fyYear = parseInt(fyF.replace('fy_',''));
+      var fyStart = new Date(fyYear, 3, 1);   // Apr 1
+      var fyEnd   = new Date(fyYear+1, 2, 31); // Mar 31
+      if(txnDate < fyStart || txnDate > fyEnd) return false;
     }
+
+    // Quarter filter
+    if(qF!=='all'){
+      var qm = txnDate.getMonth(); // 0-indexed
+      var inQ = (qF==='q1'&&qm>=3&&qm<=5)||(qF==='q2'&&qm>=6&&qm<=8)||(qF==='q3'&&qm>=9&&qm<=11)||(qF==='q4'&&qm>=0&&qm<=2);
+      if(!inQ) return false;
+    }
+
+    // Month filter
+    if(monthF!=='all'){
+      if((txnDate.getMonth()+1) !== parseInt(monthF)) return false;
+    }
+
+    // Period filter
+    if(periodF!=='all'){
+      var diff = (now - txnDate)/86400000;
+      if(periodF==='today'  && diff>1)   return false;
+      if(periodF==='week'   && diff>7)   return false;
+      if(periodF==='month'  && diff>30)  return false;
+      if(periodF==='3month' && diff>90)  return false;
+      if(periodF==='6month' && diff>180) return false;
+      if(periodF==='year'   && diff>365) return false;
+    }
+
+    // Custom date range
+    if(fromF){ var fd=new Date(fromF); if(txnDate<fd) return false; }
+    if(toF)  { var td=new Date(toF);   td.setHours(23,59,59); if(txnDate>td) return false; }
+
     return true;
   });
-  // Summary
-  var totalAmt=filtered.reduce(function(s,t){return s+(t.amount||0);},0);
-  var summEl=document.getElementById('th-summary');
-  if(summEl) summEl.innerHTML=[['Total Txns',filtered.length,'var(--cyan)'],['Total Amount','₹'+fmtS(totalAmt),'var(--red)'],['Success',filtered.filter(function(t){return t.status!=='failed';}).length,'var(--green)']].map(function(s){return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700;color:'+s[2]+'">'+s[1]+'</div><div style="font-size:.65rem;color:var(--muted2);margin-top:2px">'+s[0]+'</div></div>';}).join('');
-  // List
-  var listEl=document.getElementById('th-list');
+
+  // ── Summary Cards ──
+  var totalAmt   = filtered.reduce(function(s,t){return s+(t.amount||0);},0);
+  var creditAmt  = filtered.filter(function(t){return t.type==='credit';}).reduce(function(s,t){return s+(t.amount||0);},0);
+  var debitAmt   = filtered.filter(function(t){return t.type==='debit';}).reduce(function(s,t){return s+(t.amount||0);},0);
+  var successCnt = filtered.filter(function(t){return t.status!=='failed';}).length;
+  var failCnt    = filtered.filter(function(t){return t.status==='failed';}).length;
+  var commAmt    = filtered.reduce(function(s,t){return s+(t.commission||0);},0);
+
+  var summEl = document.getElementById('th-summary');
+  if(summEl) summEl.innerHTML = [
+    ['Total Txns',   filtered.length,        'var(--cyan)'],
+    ['Total Amount', '₹'+fmtS(totalAmt),     'var(--text)'],
+    ['Credit',       '₹'+fmtS(creditAmt),    'var(--green)'],
+    ['Debit',        '₹'+fmtS(debitAmt),     'var(--red)'],
+    ['Success',      successCnt,              'var(--green)'],
+    ['Failed',       failCnt,                 failCnt>0?'var(--red)':'var(--muted2)'],
+    ['Commission',   '₹'+fmtS(commAmt),      'var(--rtai)'],
+  ].map(function(s){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center">'
+      + '<div style="font-family:var(--font-head);font-size:1rem;font-weight:700;color:'+s[2]+'">'+s[1]+'</div>'
+      + '<div style="font-size:.6rem;color:var(--muted2);margin-top:2px">'+s[0]+'</div></div>';
+  }).join('');
+
+  // ── Transaction List ──
+  var listEl = document.getElementById('th-list');
   if(!listEl) return;
-  if(!filtered.length){listEl.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted2)">No transactions found</div>';return;}
+  if(!filtered.length){
+    listEl.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:8px">🔍</div>No transactions found for selected filters</div>';
+    return;
+  }
+
   // Group by date
   var grouped={};
-  filtered.slice().reverse().forEach(function(t){var d=t.date||'Unknown';if(!grouped[d])grouped[d]=[];grouped[d].push(t);});
+  filtered.slice().reverse().forEach(function(t){
+    var d = t.date||'Unknown';
+    if(!grouped[d]) grouped[d]=[];
+    grouped[d].push(t);
+  });
+
   var html='';
   Object.keys(grouped).forEach(function(date){
-    var dayTxns=grouped[date];
-    var dayAmt=dayTxns.reduce(function(s,t){return s+(t.amount||0);},0);
-    html+='<div style="margin-bottom:14px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase">📅 '+date+'</div><div style="font-size:.7rem;color:var(--muted2)">'+dayTxns.length+' txns · ₹'+fmtS(dayAmt)+'</div></div>';
+    var dayTxns = grouped[date];
+    var dayAmt  = dayTxns.reduce(function(s,t){return s+(t.amount||0);},0);
+    html += '<div style="margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+      + '<div style="font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase">📅 '+date+'</div>'
+      + '<div style="font-size:.7rem;color:var(--muted2)">'+dayTxns.length+' txns · ₹'+fmtS(dayAmt)+'</div></div>';
     dayTxns.forEach(function(t){
-      var svc=SERVICES.find(function(s){return s.id===t.service;})||{icon:'💳',color:'#6b7280',name:t.service};
-      var rc=isAdminWL?getRC(t.userRole||'customer'):null;
-      html+='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px"><div style="display:flex;align-items:center;gap:10px;min-width:0"><div style="width:32px;height:32px;border-radius:8px;background:'+svc.color+'18;border:1px solid '+svc.color+'33;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">'+svc.icon+'</div><div style="min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text)">'+t.title+'</div><div style="font-size:.7rem;color:var(--muted2)">'+t.txnId+(isAdminWL&&t.userName?' · '+t.userName:'')+'</div>'+(isAdminWL&&rc?'<div style="font-size:.65rem;background:'+rc.color+'20;color:'+rc.color+';display:inline-block;padding:1px 6px;border-radius:100px;margin-top:2px">'+rc.label+'</div>':'')+'</div></div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><div style="text-align:right"><div style="font-size:.88rem;font-weight:700;color:'+(t.type==='credit'?'var(--green)':'var(--red)')+'">'+(t.type==='credit'?'+':'-')+'₹'+fmtS(t.amount||0)+'</div><div style="font-size:.62rem;color:var(--rtai)">✓ RTAI</div></div><button onclick="showInvoice(\''+ t.txnId +'\')" style="font-size:.68rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);padding:3px 8px;border-radius:6px;cursor:pointer">🧾</button></div></div>';
+      var svc = SERVICES.find(function(s){return s.id===t.service;})||{icon:'💳',color:'#6b7280',name:t.service||'Service'};
+      var rc  = isAdminWL ? getRC(t.userRole||'customer') : null;
+      var subTag = t.subService ? '<span style="font-size:.6rem;background:rgba(99,102,241,.15);color:#818cf8;padding:1px 5px;border-radius:4px;margin-left:4px">'+t.subService+'</span>' : '';
+      html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">'
+        + '<div style="display:flex;align-items:center;gap:10px;min-width:0">'
+        + '<div style="width:32px;height:32px;border-radius:8px;background:'+svc.color+'18;border:1px solid '+svc.color+'33;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">'+svc.icon+'</div>'
+        + '<div style="min-width:0">'
+        + '<div style="font-size:.82rem;font-weight:600;color:var(--text)">'+t.title+subTag+'</div>'
+        + '<div style="font-size:.7rem;color:var(--muted2)">'+t.txnId+(isAdminWL&&t.userName?' · '+t.userName:'')+'</div>'
+        + (isAdminWL&&rc?'<div style="font-size:.65rem;background:'+rc.color+'20;color:'+rc.color+';display:inline-block;padding:1px 6px;border-radius:100px;margin-top:2px">'+rc.label+'</div>':'')
+        + (t.commission?'<div style="font-size:.62rem;color:var(--rtai);margin-top:1px">Comm: ₹'+fmtN(t.commission)+'</div>':'')
+        + '</div></div>'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+        + '<div style="text-align:right">'
+        + '<div style="font-size:.88rem;font-weight:700;color:'+(t.type==='credit'?'var(--green)':'var(--red)')+'\">'+(t.type==='credit'?'+':'-')+'₹'+fmtS(t.amount||0)+'</div>'
+        + '<div style="font-size:.62rem;color:var(--rtai)">✓ RTAI</div>'
+        + '</div>'
+        + '<button onclick="showInvoice(\''+t.txnId+'\')" style="font-size:.68rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);padding:3px 8px;border-radius:6px;cursor:pointer">🧾</button>'
+        + '</div></div>';
     });
-    html+='</div>';
+    html += '</div>';
   });
-  listEl.innerHTML=html;
+  listEl.innerHTML = html;
 }
 
 
@@ -7743,16 +7945,200 @@ function saveWhitelabelSettings(){
   toast('✅ Brand settings saved!','s');
 }
 
-// Hook into goPage for new pages
+// ══════════════════════════════════════
+// DISPUTE RESOLUTION PAGE
+// ══════════════════════════════════════
+var _disputeFilter = 'all';
+
+function renderDispute(){
+  var el = document.getElementById('page-dispute');
+  if(!el) return;
+
+  var isAdmin = ['admin','whitelabel'].indexOf(CU.role) >= 0;
+
+  // Collect all transactions from TXN_HISTORY + network
+  var allTxns = TXN_HISTORY.slice();
+  if(isAdmin && window._allNetworkTxns){
+    allTxns = window._allNetworkTxns.slice();
+  }
+
+  // Add mock dispute data for demo
+  if(!allTxns.length){
+    allTxns = [
+      {txnId:'TXN001',title:'AEPS Cash Withdrawal',service:'aeps',amount:2000,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Ramesh K.',userRole:'retailer',phone:'9360097511',disputeStatus:'open'},
+      {txnId:'TXN002',title:'Mobile Recharge',service:'recharge',amount:499,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Priya S.',userRole:'customer',phone:'8248839950',disputeStatus:'none'},
+      {txnId:'TXN003',title:'DMT Transfer',service:'dmt',amount:5000,type:'debit',status:'success',date:new Date().toLocaleDateString('en-IN'),userName:'Karthik M.',userRole:'distributor',phone:'7890123456',disputeStatus:'none'},
+      {txnId:'TXN004',title:'Bill Payment - Electricity',service:'bbps',amount:1200,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Suresh R.',userRole:'retailer',phone:'9876543210',disputeStatus:'chargeback'},
+      {txnId:'TXN005',title:'UPI Cash Out',service:'upi',amount:3000,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Meena V.',userRole:'customer',phone:'8765432109',disputeStatus:'reversal'},
+    ];
+  }
+
+  // Filter
+  var filtered = allTxns.filter(function(t){
+    if(_disputeFilter === 'all') return true;
+    if(_disputeFilter === 'failed')  return t.status === 'failed';
+    if(_disputeFilter === 'pending') return t.status === 'pending';
+    if(_disputeFilter === 'success') return t.status === 'success';
+    if(_disputeFilter === 'disputed') return t.disputeStatus && t.disputeStatus !== 'none';
+    return true;
+  });
+
+  // Stats
+  var failedCnt  = allTxns.filter(function(t){ return t.status==='failed'; }).length;
+  var pendingCnt = allTxns.filter(function(t){ return t.status==='pending'; }).length;
+  var successCnt = allTxns.filter(function(t){ return t.status==='success'; }).length;
+  var disputedCnt= allTxns.filter(function(t){ return t.disputeStatus && t.disputeStatus!=='none'; }).length;
+  var failedAmt  = allTxns.filter(function(t){ return t.status==='failed'; }).reduce(function(s,t){ return s+(t.amount||0); },0);
+
+  var btnStyle = function(f){
+    var active = _disputeFilter === f;
+    var colors = {all:'#06b6d4',failed:'#ef4444',pending:'#f59e0b',success:'#10b981',disputed:'#8b5cf6'};
+    var c = colors[f]||'#06b6d4';
+    return 'padding:6px 14px;border-radius:100px;font-size:.72rem;font-weight:700;cursor:pointer;border:1px solid '
+      + (active ? c+';background:'+c+';color:#000' : c+'44;background:'+c+'11;color:'+c);
+  };
+
+  var rows = filtered.map(function(t){
+    var svc = SERVICES.find(function(s){ return s.id===t.service; })||{icon:'💳',color:'#6b7280',name:t.service||'Service'};
+    var statusColor = t.status==='success'?'#10b981':t.status==='failed'?'#ef4444':'#f59e0b';
+    var statusBg    = t.status==='success'?'rgba(16,185,129,.12)':t.status==='failed'?'rgba(239,68,68,.12)':'rgba(245,158,11,.12)';
+    var dispColor   = t.disputeStatus==='chargeback'?'#ef4444':t.disputeStatus==='reversal'?'#8b5cf6':t.disputeStatus==='resolved'?'#10b981':'#6b7280';
+    var dispLabel   = t.disputeStatus==='chargeback'?'Chargeback':t.disputeStatus==='reversal'?'Reversal Req':t.disputeStatus==='resolved'?'Resolved':t.disputeStatus==='open'?'Open Dispute':'—';
+
+    var actionBtns = '';
+    if(t.status === 'failed'){
+      actionBtns += '<button onclick="initiateReversal(\''+t.txnId+'\')" style="padding:4px 10px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.3);border-radius:6px;color:#a78bfa;font-size:.68rem;font-weight:600;cursor:pointer;margin-right:4px">↩ Reverse</button>';
+    }
+    if(t.status === 'failed' || t.status === 'pending'){
+      actionBtns += '<button onclick="initiateChargeback(\''+t.txnId+'\')" style="padding:4px 10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:6px;color:#f87171;font-size:.68rem;font-weight:600;cursor:pointer;margin-right:4px">⚡ Chargeback</button>';
+    }
+    if(t.status === 'pending'){
+      actionBtns += '<button onclick="checkTxnStatus(\''+t.txnId+'\')" style="padding:4px 10px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:6px;color:#fbbf24;font-size:.68rem;font-weight:600;cursor:pointer">🔄 Check Status</button>';
+    }
+    if(t.status === 'success' && (!t.disputeStatus||t.disputeStatus==='none')){
+      actionBtns += '<span style="font-size:.68rem;color:var(--muted2)">No action needed</span>';
+    }
+
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:8px"><div style="width:28px;height:28px;border-radius:7px;background:'+svc.color+'18;display:flex;align-items:center;justify-content:center;font-size:.82rem;flex-shrink:0">'+svc.icon+'</div><div><div style="font-size:.78rem;font-weight:600;color:var(--text)">'+t.title+'</div><div style="font-size:.65rem;color:var(--muted2)">'+t.txnId+'</div>'+(t.userName?'<div style="font-size:.62rem;color:var(--muted2)">'+t.userName+'</div>':'')+'</div></div></td>'
+      + '<td style="padding:10px 8px;text-align:right;font-size:.82rem;font-weight:700;color:var(--text)">₹'+fmtS(t.amount||0)+'</td>'
+      + '<td style="padding:10px 8px;text-align:center"><span style="background:'+statusBg+';color:'+statusColor+';border-radius:100px;padding:3px 9px;font-size:.68rem;font-weight:700;text-transform:uppercase">'+t.status+'</span></td>'
+      + '<td style="padding:10px 8px;text-align:center"><span style="background:'+dispColor+'18;color:'+dispColor+';border-radius:6px;padding:3px 8px;font-size:.65rem;font-weight:700">'+dispLabel+'</span></td>'
+      + '<td style="padding:10px 8px;font-size:.7rem;color:var(--muted2);white-space:nowrap">'+t.date+'</td>'
+      + '<td style="padding:10px 8px">'+actionBtns+'</td>'
+      + '</tr>';
+  }).join('');
+
+  el.innerHTML = '<div class="page-title">⚖️ Dispute Resolution</div>'
+    + '<div class="page-sub">View, reverse, and raise chargebacks on transactions</div>'
+
+    // Summary Cards
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:16px">'
+    + [
+        ['❌ Failed',   failedCnt,  '₹'+fmtS(failedAmt), '#ef4444'],
+        ['⏳ Pending',  pendingCnt, 'Awaiting settle',   '#f59e0b'],
+        ['✅ Success',  successCnt, 'Completed',          '#10b981'],
+        ['⚖️ Disputed', disputedCnt,'Open cases',         '#8b5cf6'],
+      ].map(function(s){
+        return '<div style="background:var(--bg2);border:1px solid '+s[3]+'33;border-radius:12px;padding:12px;text-align:center">'
+          + '<div style="font-size:.72rem;font-weight:700;color:'+s[3]+';margin-bottom:4px">'+s[0]+'</div>'
+          + '<div style="font-family:var(--font-head);font-size:1.2rem;font-weight:800;color:'+s[3]+'">'+s[1]+'</div>'
+          + '<div style="font-size:.62rem;color:var(--muted2);margin-top:2px">'+s[2]+'</div>'
+          + '</div>';
+      }).join('')
+    + '</div>'
+
+    // Filter Tabs
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+    + ['all','failed','pending','success','disputed'].map(function(f){
+        var labels = {all:'All Txns',failed:'❌ Failed',pending:'⏳ Pending',success:'✅ Success',disputed:'⚖️ Disputed'};
+        return '<button onclick="_disputeFilter=\''+f+'\';renderDispute()" style="'+btnStyle(f)+'">'+labels[f]+'</button>';
+      }).join('')
+    + '</div>'
+
+    // Info Banner
+    + '<div style="background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.75rem;color:#a78bfa">'
+    + '⚖️ <b>Reverse:</b> Refund failed transaction amount back to wallet. &nbsp;'
+    + '⚡ <b>Chargeback:</b> Raise dispute with payment partner for fund recovery. &nbsp;'
+    + '🔄 <b>Check Status:</b> Fetch live status from payment gateway.'
+    + '</div>'
+
+    // Table
+    + (filtered.length ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:640px">'
+    + '<thead><tr style="background:var(--bg3)">'
+    + '<th style="padding:10px 8px;text-align:left;font-size:.68rem;color:var(--muted2)">TRANSACTION</th>'
+    + '<th style="padding:10px 8px;text-align:right;font-size:.68rem;color:var(--muted2)">AMOUNT</th>'
+    + '<th style="padding:10px 8px;text-align:center;font-size:.68rem;color:var(--muted2)">STATUS</th>'
+    + '<th style="padding:10px 8px;text-align:center;font-size:.68rem;color:var(--muted2)">DISPUTE</th>'
+    + '<th style="padding:10px 8px;text-align:left;font-size:.68rem;color:var(--muted2)">DATE</th>'
+    + '<th style="padding:10px 8px;text-align:left;font-size:.68rem;color:var(--muted2)">ACTION</th>'
+    + '</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    : '<div style="text-align:center;padding:32px;color:var(--muted2)"><div style="font-size:2.5rem;margin-bottom:8px">✅</div><div>No transactions in this category</div></div>');
+}
+
+function initiateReversal(txnId){
+  var t = TXN_HISTORY.find(function(x){ return x.txnId===txnId; });
+  var amt = t ? t.amount : 0;
+  if(!confirm('Reverse transaction '+txnId+'?\n₹'+fmtN(amt)+' will be credited back to wallet.')) return;
+  // Update transaction status
+  TXN_HISTORY.forEach(function(x){
+    if(x.txnId===txnId){ x.status='reversed'; x.disputeStatus='reversal'; }
+  });
+  // Credit wallet
+  if(amt){ CU.wallet = (CU.wallet||0) + amt; document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet); }
+  // Save to Firestore
+  if(db && CU.uid){
+    db.collection('bankme_users').doc(CU.uid).update({ wallet:CU.wallet, txns:TXN_HISTORY }).catch(function(){});
+  }
+  toast('✅ Reversal initiated! ₹'+fmtN(amt)+' credited back','s');
+  renderDispute();
+}
+
+function initiateChargeback(txnId){
+  var reason = prompt('Chargeback reason for '+txnId+':\n(e.g. Amount debited but transaction failed)');
+  if(!reason) return;
+  TXN_HISTORY.forEach(function(x){
+    if(x.txnId===txnId){ x.disputeStatus='chargeback'; x.chargebackReason=reason; x.chargebackDate=nowStr(); }
+  });
+  if(db && CU.uid){
+    db.collection('bankme_users').doc(CU.uid).update({ txns:TXN_HISTORY }).catch(function(){});
+    // Log chargeback
+    db.collection('bankme_disputes').add({
+      txnId:txnId, reason:reason, raisedBy:CU.uid, raisedByName:CU.name,
+      raisedByRole:CU.role, date:nowStr(), status:'open'
+    }).catch(function(){});
+  }
+  toast('⚡ Chargeback raised for '+txnId,'s');
+  renderDispute();
+}
+
+function checkTxnStatus(txnId){
+  toast('🔄 Checking status for '+txnId+'...','i');
+  // Simulate API check
+  setTimeout(function(){
+    TXN_HISTORY.forEach(function(x){
+      if(x.txnId===txnId){ x.status='failed'; }
+    });
+    toast('Status updated for '+txnId,'s');
+    renderDispute();
+  }, 1500);
+}
+
+// ══════════════════════════════════════
+// goPage hook for dynamic pages
+// ══════════════════════════════════════
 var _origGoPage = goPage;
 goPage = function(pg){
   _origGoPage(pg);
   if(pg === 'commission') renderCommission();
   if(pg === 'apikeys')    renderApiKeys();
-  if(pg === 'profile' && (CU && (CU.role==='whitelabel'||CU.role==='admin'))) {
+  if(pg === 'dispute')    renderDispute();
+  if(pg === 'profile' && (CU && (CU.role==='whitelabel'||CU.role==='admin'))){
     setTimeout(renderWhitelabelSettings, 100);
   }
 };
+
 </script>
 
 
