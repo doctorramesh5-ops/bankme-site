@@ -978,12 +978,12 @@ function sendMsg91OTP(mobile, otp, onSuccess, onFail){
       if(onSuccess) onSuccess();
     } else {
       console.warn('OTP SMS failed:', d);
-      if(onFail) onFail(d.message || 'SMS send failed');
+      if(onFail) onFail(d.message + (d.debug ? ' | ' + JSON.stringify(d.debug) : ''));
     }
   })
   .catch(function(e){
     console.warn('OTP proxy error:', e);
-    if(onFail) onFail('Network error sending OTP');
+    if(onFail) onFail('Network error: ' + e.message);
   });
 }
 
@@ -1056,7 +1056,7 @@ function requestOTP(){
     toast('📱 OTP sent to +91 ' + mobile, 's');
     onAllSent();
   }, function(err){
-    toast('⚠️ SMS failed: ' + err, 'e');
+    toast('SMS error: ' + err, 'e');
     if(btn){ btn.textContent = 'Send OTP →'; btn.disabled = false; }
   });
 
