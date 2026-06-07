@@ -1192,6 +1192,7 @@ function _handleOTPSuccess(mobile){
     db.collection('bankme_users').where('phone','==',mobile).limit(1).get()
       .then(function(snap){
         if(!snap.empty){
+          // Existing user — load from Firestore
           var doc = snap.docs[0];
           CU = doc.data(); CU.uid = doc.id;
           TXN_HISTORY = CU.txns||[];
@@ -1199,21 +1200,70 @@ function _handleOTPSuccess(mobile){
           showApp();
           toast('Welcome back, ' + CU.name + '! 🎉', 's');
         } else {
-          if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-          var err2 = document.getElementById('otp-err');
-          if(err2) err2.textContent = 'Mobile not registered. Please sign up.';
-          switchAuth('signup');
+          // New user — auto create account
+          var newUser = {
+            id: genId(),
+            phone: mobile,
+            name: 'User ' + mobile.slice(-4),
+            email: '',
+            role: 'customer',
+            wallet: 0,
+            joined: nowStr(),
+            txns: [],
+            kyc: 'pending',
+            commissionEarned: 0,
+            rtaiScore: 0,
+            riskLevel: 'Low'
+          };
+          db.collection('bankme_users').add(newUser)
+            .then(function(docRef){
+              CU = newUser; CU.uid = docRef.id;
+              TXN_HISTORY = [];
+              if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+              showApp();
+              toast('Welcome to BankMe! 🎉', 's');
+            })
+            .catch(function(){
+              // Even if Firestore save fails, let user in
+              CU = newUser; CU.uid = genId();
+              TXN_HISTORY = [];
+              if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+              showApp();
+              toast('Welcome to BankMe! 🎉', 's');
+            });
         }
       })
       .catch(function(){
+        // Firestore error — still let user in with basic profile
+        CU = {
+          id: genId(), uid: genId(),
+          phone: mobile,
+          name: 'User ' + mobile.slice(-4),
+          email: '', role: 'customer',
+          wallet: 0, joined: nowStr(),
+          txns: [], kyc: 'pending',
+          commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
+        };
+        TXN_HISTORY = [];
         if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-        var err2 = document.getElementById('otp-err');
-        if(err2) err2.textContent = 'Verification failed. Try again.';
+        showApp();
+        toast('Welcome to BankMe! 🎉', 's');
       });
   } else {
+    // No Firestore — create basic session
+    CU = {
+      id: genId(), uid: genId(),
+      phone: mobile,
+      name: 'User ' + mobile.slice(-4),
+      email: '', role: 'customer',
+      wallet: 0, joined: nowStr(),
+      txns: [], kyc: 'pending',
+      commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
+    };
+    TXN_HISTORY = [];
     if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-    var err2 = document.getElementById('otp-err');
-    if(err2) err2.textContent = 'Mobile not registered. Please sign up first.';
+    showApp();
+    toast('Welcome to BankMe! 🎉', 's');
   }
 }
 
