@@ -1014,22 +1014,30 @@ function requestOTP(){
   // Start countdown timer
   startOTPTimer();
 
-  // Send OTP via BankMe Worker
+  // Send OTP via BankMe Worker — single direct call
   var btn = document.getElementById('li-otp-btn');
   if(btn){ btn.textContent = 'Sending...'; btn.disabled = true; }
 
   var email = document.getElementById('li-email').value.trim();
+  var workerUrl = CF_WORKER + '?action=send&phone=' + mobile;
+  if(email && /\S+@\S+\.\S+/.test(email)) workerUrl += '&email=' + encodeURIComponent(email) + '&name=Customer';
 
-  sendMsg91OTP(mobile, null, function(){
-    toast('📱 OTP sent to +91 ' + mobile + (email ? ' & 📧 ' + email : ''), 's');
-    if(btn){ btn.textContent = 'OTP Sent ✓'; btn.disabled = false; }
-  }, function(err){
-    toast('⚠️ ' + err, 'e');
+  fetch(workerUrl, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    console.log('OTP send:', d);
+    if(d && d.type === 'success'){
+      toast('📱 OTP sent to +91 ' + mobile, 's');
+      if(btn){ btn.textContent = 'OTP Sent ✓'; btn.disabled = false; }
+    } else {
+      toast('⚠️ ' + (d.message || 'OTP send failed'), 'e');
+      if(btn){ btn.textContent = 'Send OTP →'; btn.disabled = false; }
+    }
+  })
+  .catch(function(e){
+    toast('⚠️ Network error: ' + e.message, 'e');
     if(btn){ btn.textContent = 'Send OTP →'; btn.disabled = false; }
   });
-
-  // Hide OTP hint for all users (worker generates OTP, not us)
-  
 }
 
 function initOTPBoxes(){
