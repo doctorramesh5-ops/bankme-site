@@ -1176,6 +1176,9 @@ function sendMsg91OTPSignup(mobile, email, name, onSuccess, onFail){
 
 function _handleOTPSuccess(mobile){
   var btn = document.getElementById('otp-verify-btn');
+  if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+
+  // Check demo users first
   var demo = DEMO_USERS.find(function(u){ return u.phone === mobile; });
   if(demo){
     CU = {id:genId(), uid:'demo_'+demo.role, name:demo.name, email:demo.email,
@@ -1183,87 +1186,54 @@ function _handleOTPSuccess(mobile){
           joined:nowStr(), txns:[], kyc:'verified',
           commissionEarned:5000, rtaiScore:88, riskLevel:'Low'};
     TXN_HISTORY = [];
-    if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
     showApp();
     toast('Welcome, ' + demo.name + '! 🎉', 's');
     return;
   }
+
+  // Try Firestore lookup — but always let user in regardless
+  function loginWithProfile(profile){
+    CU = profile;
+    TXN_HISTORY = CU.txns || [];
+    showApp();
+    toast('Welcome' + (CU.name && CU.name !== ('User '+mobile.slice(-4)) ? ' back, ' + CU.name : ' to BankMe') + '! 🎉', 's');
+  }
+
+  var defaultProfile = {
+    id: genId(), uid: genId(),
+    phone: mobile,
+    name: 'User ' + mobile.slice(-4),
+    email: '', role: 'customer',
+    wallet: 0, joined: nowStr(),
+    txns: [], kyc: 'pending',
+    commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
+  };
+
   if(db){
     db.collection('bankme_users').where('phone','==',mobile).limit(1).get()
       .then(function(snap){
         if(!snap.empty){
-          // Existing user — load from Firestore
           var doc = snap.docs[0];
-          CU = doc.data(); CU.uid = doc.id;
-          TXN_HISTORY = CU.txns||[];
-          if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-          showApp();
-          toast('Welcome back, ' + CU.name + '! 🎉', 's');
+          var profile = doc.data(); profile.uid = doc.id;
+          loginWithProfile(profile);
         } else {
-          // New user — auto create account
-          var newUser = {
-            id: genId(),
-            phone: mobile,
-            name: 'User ' + mobile.slice(-4),
-            email: '',
-            role: 'customer',
-            wallet: 0,
-            joined: nowStr(),
-            txns: [],
-            kyc: 'pending',
-            commissionEarned: 0,
-            rtaiScore: 0,
-            riskLevel: 'Low'
-          };
-          db.collection('bankme_users').add(newUser)
-            .then(function(docRef){
-              CU = newUser; CU.uid = docRef.id;
-              TXN_HISTORY = [];
-              if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-              showApp();
-              toast('Welcome to BankMe! 🎉', 's');
+          // Save new user to Firestore
+          db.collection('bankme_users').add(defaultProfile)
+            .then(function(ref){
+              defaultProfile.uid = ref.id;
+              loginWithProfile(defaultProfile);
             })
             .catch(function(){
-              // Even if Firestore save fails, let user in
-              CU = newUser; CU.uid = genId();
-              TXN_HISTORY = [];
-              if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-              showApp();
-              toast('Welcome to BankMe! 🎉', 's');
+              loginWithProfile(defaultProfile);
             });
         }
       })
       .catch(function(){
-        // Firestore error — still let user in with basic profile
-        CU = {
-          id: genId(), uid: genId(),
-          phone: mobile,
-          name: 'User ' + mobile.slice(-4),
-          email: '', role: 'customer',
-          wallet: 0, joined: nowStr(),
-          txns: [], kyc: 'pending',
-          commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
-        };
-        TXN_HISTORY = [];
-        if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-        showApp();
-        toast('Welcome to BankMe! 🎉', 's');
+        // Firestore failed — still let user in
+        loginWithProfile(defaultProfile);
       });
   } else {
-    // No Firestore — create basic session
-    CU = {
-      id: genId(), uid: genId(),
-      phone: mobile,
-      name: 'User ' + mobile.slice(-4),
-      email: '', role: 'customer',
-      wallet: 0, joined: nowStr(),
-      txns: [], kyc: 'pending',
-      commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
-    };
-    TXN_HISTORY = [];
-    if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
-    showApp();
-    toast('Welcome to BankMe! 🎉', 's');
+    loginWithProfile(defaultProfile);
   }
 }
 
@@ -1504,17 +1474,31 @@ function doSignupVerifyOTP(){
   err.textContent='';
 
   if(entered.length<6){ err.textContent='Enter all 6 digits'; return; }
-  if(Date.now()>_suOtpExpiry){ err.textContent='OTP expired. Please resend.'; return; }
-  if(entered!==_suOtp){
-    for(var j=0;j<6;j++){ var b=document.getElementById('su-otp'+j); if(b) b.style.borderColor='var(--danger)'; }
-    err.textContent='Incorrect OTP. Try again.'; return;
-  }
 
-  // OTP verified — proceed to create account
-  clearInterval(_suOtpTimer);
   var btn=document.getElementById('su-verify-btn');
-  btn.disabled=true; btn.textContent='Creating Account…';
-  doSignup();
+  btn.disabled=true; btn.textContent='Verifying…';
+
+  var phone = document.getElementById('si-phone').value.trim();
+  var url = CF_WORKER + '?action=verify&phone=' + phone + '&otp=' + entered;
+
+  fetch(url, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    console.log('Signup verify response:', d);
+    if(d && d.type === 'success'){
+      clearInterval(_suOtpTimer);
+      btn.textContent='Creating Account…';
+      doSignup();
+    } else {
+      btn.disabled=false; btn.textContent='Verify & Create Account →';
+      for(var j=0;j<6;j++){ var b=document.getElementById('su-otp'+j); if(b) b.style.borderColor='var(--danger)'; }
+      err.textContent = d.message || 'Incorrect OTP. Try again.';
+    }
+  })
+  .catch(function(e){
+    btn.disabled=false; btn.textContent='Verify & Create Account →';
+    err.textContent='Verification failed. Try again.';
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════
