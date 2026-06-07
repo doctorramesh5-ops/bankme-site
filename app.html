@@ -935,14 +935,21 @@ function renderDemoButtons(){
 }
 
 function quickLogin(email,pass){
-  // Find demo user by email and trigger mobile OTP for them
+  // Find demo user and login directly — NO OTP for demo
   var demo = DEMO_USERS.find(function(u){ return u.email===email; });
-  if(demo && demo.phone){
-    document.getElementById('li-mobile').value = demo.phone;
-    requestOTP();
+  if(demo){
+    CU = {
+      id:genId(), uid:'demo_'+demo.role,
+      name:demo.name, email:demo.email, phone:demo.phone,
+      role:demo.role, wallet:demo.wallet,
+      joined:nowStr(), txns:[], kyc:'verified',
+      commissionEarned:5000, rtaiScore:88, riskLevel:'Low'
+    };
+    TXN_HISTORY = [];
+    showApp();
+    toast('Welcome, '+demo.name+'! 👋 (Demo Mode)','s');
     return;
   }
-  // Fallback to email login
   document.getElementById('li-email').value=email;
   document.getElementById('li-pass').value=pass;
   doLogin();
