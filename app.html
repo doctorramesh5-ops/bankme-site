@@ -601,7 +601,7 @@ main{flex:1;overflow:auto}
         <div class="theme-btn"        id="th-green" onclick="setTheme('green')" style="background:linear-gradient(135deg,#f5faf5,#16a34a)" title="Green Finance"></div>
         <div class="theme-btn"        id="th-gold"  onclick="setTheme('gold')"  style="background:linear-gradient(135deg,#0d0a00,#f59e0b)" title="Gold Premium"></div>
       </div>
-      <div class="avatar" id="user-avatar">U</div>
+      <div class="avatar" id="user-avatar" onclick="goPage('profile')" style="cursor:pointer" title="My Profile">U</div>
     </div>
   </div>
 
@@ -1789,7 +1789,7 @@ function showApp(){
   var role=CU.role;
   var isAdminWL=['admin','whitelabel'].indexOf(role)>=0;
   var hasServices=['superdist','distributor','retailer','customer'].indexOf(role)>=0;
-  var hasNetwork=['admin','whitelabel','superdist','distributor','retailer'].indexOf(role)>=0;
+  var hasNetwork=['admin','whitelabel','superdist','distributor'].indexOf(role)>=0;
   document.getElementById('nb-rtai').style.display=isAdminWL?'':'none';
     document.getElementById('nb-fraud').style.display = (role==='admin'||role==='whitelabel'||role==='superdist') ? '' : 'none';
     document.getElementById('nb-reconcile').style.display = (role==='admin'||role==='whitelabel') ? '' : 'none';
@@ -1915,7 +1915,7 @@ function renderWLDashboard(){
 
 function renderUserDashboard(){
   var el=document.getElementById("page-dashboard");
-  var hasNetwork=["superdist","distributor","retailer"].indexOf(CU.role)>=0;
+  var hasNetwork=["superdist","distributor","admin","whitelabel"].indexOf(CU.role)>=0;
   var statData=CU.role==="customer"
     ?[["Wallet","₹"+fmtS(CU.wallet||0),"var(--green)"],["Txns",TXN_HISTORY.length,"var(--cyan)"],["RTAI",(CU.rtaiScore||85)+"/100","var(--rtai)"],["eKYC",CU.kyc==="verified"?"Done":"Pending",CU.kyc==="verified"?"var(--green)":"var(--gold)"]]
     :[["Wallet","₹"+fmtS(CU.wallet||0),"var(--green)"],["Txns",TXN_HISTORY.length,"var(--cyan)"],["Commission","₹"+fmtS(CU.commissionEarned||0),"var(--gold)"],["RTAI",(CU.rtaiScore||85)+"/100","var(--rtai)"],["eKYC",CU.kyc==="verified"?"Done":"Pending",CU.kyc==="verified"?"var(--green)":"var(--gold)"]];
@@ -8894,14 +8894,23 @@ function updateCCForm(id, name){
       + '<select class="fsel" id="cc-variant"><option>Classic</option><option>Gold</option><option>Platinum</option><option>Signature</option><option>Infinite</option></select>'
       + '<button onclick="processCreditCard(\''+id+'\',\''+name+'\',\'issuance\')" class="btn-primary" style="margin-top:4px">💳 Apply for Credit Card →</button>';
   } else if(svcType === 'payment'){
-    dynForm.innerHTML = '<label class="flabel">Card Number (Last 4 digits)</label>'
-      + '<input class="finp" id="cc-cardno" placeholder="xxxx xxxx xxxx XXXX" maxlength="19"/>'
+    dynForm.innerHTML = '<label class="flabel">Card Number</label>'
+      + '<input class="finp" id="cc-cardno" placeholder="1234 5678 9012 3456" maxlength="19" oninput="var v=this.value.replace(/[^0-9]/g,\'\').replace(/(\\d{4})(?=\\d)/g,\'$1 \');this.value=v"/>'
+      + '<label class="flabel">Name on Card</label>'
+      + '<input class="finp" id="cc-cardholder" placeholder="NAME AS ON CARD" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+      + '<div><label class="flabel">Expiry (MM/YY)</label>'
+      + '<input class="finp" id="cc-expiry" placeholder="MM/YY" maxlength="5" oninput="var v=this.value.replace(/[^0-9]/g,\'\');if(v.length>=3)v=v.slice(0,2)+\'/\'+v.slice(2);this.value=v"/></div>'
+      + '<div><label class="flabel">CVV</label>'
+      + '<input class="finp" id="cc-cvv" placeholder="123" maxlength="4" type="password"/></div>'
+      + '</div>'
       + '<label class="flabel">Registered Mobile</label>'
-      + '<input class="finp" id="cc-mobile" placeholder="10-digit mobile"/>'
+      + '<input class="finp" id="cc-mobile" placeholder="10-digit mobile" maxlength="10" type="tel"/>'
       + '<label class="flabel">Payment Amount (₹)</label>'
       + '<input class="finp" type="number" id="cc-amount" placeholder="Enter amount"/>'
       + '<label class="flabel">Payment Type</label>'
       + '<select class="fsel" id="cc-paytype"><option>Minimum Due</option><option>Total Outstanding</option><option>Custom Amount</option></select>'
+      + '<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:.72rem;color:#f87171">🔒 Card details are encrypted. CVV is used only for this transaction.</div>'
       + '<button onclick="processCreditCard(\''+id+'\',\''+name+'\',\'payment\')" class="btn-primary" style="margin-top:4px">💳 Pay Card Bill →</button>';
   } else {
     dynForm.innerHTML = '<label class="flabel">Card Number (Last 4 digits)</label>'
@@ -8915,21 +8924,50 @@ function updateCCForm(id, name){
 }
 
 function processCreditCard(pid, pname, svcType){
-  var mobile = (document.getElementById('cc-mobile')||{}).value.trim();
-  var name   = (document.getElementById('cc-name')||document.getElementById('cc-cardno')||{}).value.trim();
-  var amount = parseFloat((document.getElementById('cc-amount')||{}).value||0);
-  if(!mobile){ toast('Enter mobile number','e'); return; }
+  var mobile     = (document.getElementById('cc-mobile')||{}).value.trim();
+  var cardno     = ((document.getElementById('cc-cardno')||{}).value||'').replace(/\s/g,'');
+  var cardholder = (document.getElementById('cc-cardholder')||{}).value.trim();
+  var expiry     = (document.getElementById('cc-expiry')||{}).value.trim();
+  var cvv        = (document.getElementById('cc-cvv')||{}).value.trim();
+  var amount     = parseFloat((document.getElementById('cc-amount')||{}).value||0);
+  var name       = (document.getElementById('cc-name')||{}).value.trim();
+
+  if(svcType === 'payment'){
+    if(!cardno || cardno.length < 15){ toast('Enter valid card number','e'); return; }
+    if(!cardholder){ toast('Enter name on card','e'); return; }
+    if(!expiry || expiry.length < 5){ toast('Enter expiry date MM/YY','e'); return; }
+    if(!cvv || cvv.length < 3){ toast('Enter CVV','e'); return; }
+    if(!mobile || mobile.length !== 10){ toast('Enter 10-digit mobile','e'); return; }
+    if(!amount){ toast('Enter payment amount','e'); return; }
+    if((CU.wallet||0) < amount){ toast('Insufficient wallet balance','e'); return; }
+  } else if(svcType === 'issuance'){
+    if(!name){ toast('Enter full name','e'); return; }
+    if(!mobile || mobile.length !== 10){ toast('Enter 10-digit mobile','e'); return; }
+  } else {
+    if(!mobile){ toast('Enter mobile number','e'); return; }
+  }
+
   var txnId = genId();
-  var title = svcType==='issuance' ? 'CC Issuance — '+pname : svcType==='payment' ? 'CC Payment — '+pname : 'CC Request — '+pname;
-  var txn = {id:txnId,txnId:txnId,service:'creditcard',subService:pname+'_'+svcType,
+  var maskedCard = (svcType==='payment' && cardno) ? '**** **** **** '+cardno.slice(-4) : '';
+  var title = svcType==='issuance' ? 'CC Issuance - '+pname
+            : svcType==='payment'  ? 'CC Bill Paid - '+pname+(maskedCard?' ('+maskedCard+')':'')
+            : 'CC Request - '+pname;
+  var txn = {
+    id:txnId,txnId:txnId,service:'creditcard',subService:pname+'_'+svcType,
     title:title,amount:amount||0,type:'debit',status:'success',
-    date:new Date().toLocaleDateString('en-IN'),rtaiVerified:true};
+    date:new Date().toLocaleDateString('en-IN'),
+    customerName:cardholder||name,customerMobile:mobile,
+    maskedCard:maskedCard,rtaiVerified:true
+  };
   TXN_HISTORY.unshift(txn);
-  if(amount && svcType==='payment'){ CU.wallet=(CU.wallet||0)-amount; document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet); }
-  addNotification('💳 '+title,'success','💳');
-  toast('✅ '+title+' submitted!','s');
+  if(amount && svcType==='payment'){
+    CU.wallet=(CU.wallet||0)-amount;
+    document.getElementById('wallet-chip').textContent='\u20b9'+fmtN(CU.wallet);
+  }
+  addNotification('CC: '+title,'success','CC');
+  toast('Submitted: '+title,'s');
   document.getElementById('svc-modal').classList.remove('show');
-  if(amount) setTimeout(function(){ showInvoice(txnId); }, 300);
+  if(amount) setTimeout(function(){ showInvoice(txnId); },300);
 }
 
 // ══════════════════════════════════════
