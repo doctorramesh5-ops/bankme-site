@@ -350,7 +350,8 @@ main{flex:1;overflow:auto}
         <!-- Signup Step 1: Details -->
         <div id="su-step1">
           <label class="flabel">Full Name <span style="color:var(--cyan);font-size:.68rem">(as per Govt. ID / PAN Card)</span></label>
-          <input class="finp" type="text" id="si-name" placeholder="Full name exactly as on PAN Card / Aadhaar" autocomplete="name" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>
+          <input class="finp" type="text" id="si-name" placeholder="Full name exactly as on PAN Card / Aadhaar" autocomplete="name" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();validatePANName(this.value)"/>
+          <div id="pan-name-hint" style="font-size:.7rem;margin-top:3px;min-height:16px"></div>
           <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:7px;padding:7px 10px;margin:-4px 0 8px;display:flex;align-items:center;gap:7px">
             <span style="font-size:.85rem">⚠️</span>
             <span style="font-size:.68rem;color:var(--gold)">Name must match your PAN Card exactly for KYC verification.</span>
@@ -432,14 +433,16 @@ main{flex:1;overflow:auto}
       <span class="tb-role-badge" id="role-badge" style="font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:100px">USER</span>
     </div>
     <div class="tb-nav">
-      <button class="nb on" id="nb-dashboard" onclick="goPage('dashboard')">🏠 Home</button>
+      <button class="nb" id="nb-dashboard" onclick="goPage('dashboard')">🏠 Home</button>
       <button class="nb" id="nb-mynetwork" onclick="goPage('mynetwork')" style="display:none">🌐 My Network</button>
       <button class="nb" id="nb-assign" onclick="goPage('assign')" style="display:none">🔗 Assign</button>
       <button class="nb" id="nb-services" onclick="goPage('services')" style="display:none">⚡ Services</button>
       <button class="nb" id="nb-rtai" onclick="goPage('rtai')" style="display:none">🛡️ RTAI</button>
       <button class="nb" id="nb-fraud" onclick="goPage('fraud')" style="display:none">🔍 Fraud Engine</button>
       <button class="nb" id="nb-reconcile" onclick="goPage('reconcile')" style="display:none">📒 Reconcile</button>
-      <button class="nb" id="nb-txnhistory" onclick="goPage('txnhistory')" style="display:none">📊 Transactions</button>
+      <button class="nb" id="nb-txnhistory" onclick="goPage('txnhistory')">📊 Transactions</button>
+      <button class="nb" id="nb-commission" onclick="goPage('commission')" style="display:none">💹 Commission</button>
+      <button class="nb" id="nb-apikeys" onclick="goPage('apikeys')" style="display:none">🔑 API Keys</button>
       <button class="nb" id="nb-chat" onclick="goPage('chat')">💬 AI Chat</button>
       <button class="nb" id="nb-wallet" onclick="goPage('wallet')">💰 Wallet</button>
       <button class="nb" id="nb-profile" onclick="goPage('profile')">⚙ Profile</button>
@@ -460,6 +463,8 @@ main{flex:1;overflow:auto}
 <div id="page-fraud" class="page" style="display:none"></div>
 <div id="page-reconcile" class="page" style="display:none"></div>
     <div id="page-txnhistory" class="page" style="display:none"></div>
+    <div id="page-commission" class="page" style="display:none"></div>
+    <div id="page-apikeys" class="page" style="display:none"></div>
     <div id="page-chat" style="display:none"></div>
     <div id="page-wallet" class="page" style="display:none"></div>
     <div id="page-network" class="page" style="display:none"></div>
@@ -1613,6 +1618,8 @@ function showApp(){
     document.getElementById('nb-reconcile').style.display = (role==='admin'||role==='whitelabel') ? '' : 'none';
   document.getElementById('nb-assign').style.display=isAdminWL?'':'none';
   document.getElementById('nb-txnhistory').style.display='';
+  document.getElementById('nb-commission').style.display=isAdminWL?'':'none';
+  document.getElementById('nb-apikeys').style.display=(role==='admin')?'':'none';
   document.getElementById('nb-services').style.display=hasServices?'':'none';
   document.getElementById('nb-mynetwork').style.display=hasNetwork?'':'none';
   goPage('dashboard');
@@ -1623,7 +1630,7 @@ function showApp(){
 // NAVIGATION
 // ══════════════════════════════════════
 function goPage(pg){
-  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','txnhistory','chat','wallet','network','profile'].forEach(function(p){
+  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','txnhistory','commission','apikeys','chat','wallet','network','profile'].forEach(function(p){
     var el=document.getElementById('page-'+p);
     var nb=document.getElementById('nb-'+p);
     if(el) el.style.display=p===pg?(p==='chat'?'flex':'block'):'none';
@@ -7206,6 +7213,389 @@ async function fetchBBPSBill(silent){
   if(fetchBtn){ fetchBtn.disabled=false; fetchBtn.textContent='Re-fetch'; }
   if(!silent) toast('Bill fetched! ₹'+fmtN(billAmt)+' due','s');
 }
+
+// ══════════════════════════════════════
+// PAN NAME VALIDATION (Signup)
+// ══════════════════════════════════════
+function validatePANName(val){
+  var hint = document.getElementById('pan-name-hint');
+  if(!hint) return;
+  if(!val){ hint.textContent=''; return; }
+  // PAN name: only uppercase A-Z and spaces
+  if(/^[A-Z ]+$/.test(val)){
+    hint.style.color='var(--green)';
+    hint.textContent='✅ Name matches PAN card format';
+  } else {
+    hint.style.color='var(--gold)';
+    hint.textContent='⚠️ Name must be in CAPITAL letters as on PAN card';
+  }
+}
+
+// ══════════════════════════════════════
+// COMMISSION STRUCTURE PAGE
+// ══════════════════════════════════════
+function renderCommission(){
+  var el = document.getElementById('page-commission');
+  if(!el) return;
+
+  var services = [
+    {name:'AEPS / Cash Withdrawal', admin:1.0, wl:0.15, sd:0.20, dist:0.25, ret:0.30, cust:0},
+    {name:'DMT / Money Transfer',   admin:0.8, wl:0.10, sd:0.15, dist:0.20, ret:0.25, cust:0},
+    {name:'Recharge (Mobile)',       admin:2.0, wl:0.30, sd:0.40, dist:0.50, ret:0.60, cust:0},
+    {name:'Bill Payment (BBPS)',     admin:1.5, wl:0.20, sd:0.30, dist:0.35, ret:0.45, cust:0},
+    {name:'Insurance Premium',       admin:5.0, wl:1.00, sd:1.50, dist:2.00, ret:2.50, cust:0},
+    {name:'Loan Processing',         admin:3.0, wl:0.50, sd:0.75, dist:1.00, ret:1.25, cust:0},
+    {name:'PAN Card (NSDL)',         admin:30,  wl:5,    sd:8,    dist:10,   ret:12,   cust:0, flat:true},
+    {name:'Travel Booking',          admin:2.5, wl:0.40, sd:0.50, dist:0.60, ret:0.75, cust:0},
+    {name:'Demat Account',           admin:4.0, wl:0.75, sd:1.00, dist:1.25, ret:1.50, cust:0},
+    {name:'Mutual Fund',             admin:1.0, wl:0.20, sd:0.25, dist:0.30, ret:0.40, cust:0},
+    {name:'UPI Cash In',             admin:0.5, wl:0.05, sd:0.08, dist:0.10, ret:0.12, cust:0},
+    {name:'UPI Cash Out',            admin:0.5, wl:0.05, sd:0.08, dist:0.10, ret:0.12, cust:0},
+  ];
+
+  var roles = [
+    {key:'admin', label:'Admin',       color:'#ef4444'},
+    {key:'wl',    label:'White Label', color:'#8b5cf6'},
+    {key:'sd',    label:'Super Dist',  color:'#f59e0b'},
+    {key:'dist',  label:'Distributor', color:'#06b6d4'},
+    {key:'ret',   label:'Retailer',    color:'#10b981'},
+  ];
+
+  var rows = services.map(function(s){
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:10px;font-size:.8rem;font-weight:600;color:var(--text)">' + s.name + '</td>'
+      + roles.map(function(r){
+          var val = s[r.key];
+          var display = s.flat ? '₹'+val : val+'%';
+          return '<td style="padding:10px;text-align:center"><span style="background:'+r.color+'18;color:'+r.color+';border-radius:6px;padding:3px 8px;font-size:.78rem;font-weight:700">'+display+'</span></td>';
+        }).join('')
+      + '</tr>';
+  }).join('');
+
+  var headerCols = roles.map(function(r){
+    return '<th style="padding:10px;text-align:center;font-size:.7rem;color:'+r.color+';white-space:nowrap">'+r.label+'</th>';
+  }).join('');
+
+  el.innerHTML = '<div class="page-title">💹 Commission Structure</div>'
+    + '<div class="page-sub">Service-wise commission rates across all network levels</div>'
+    + '<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.78rem;color:var(--green)">'
+    + '💡 Rates shown are <b>Admin earnings</b> and <b>per-level payouts</b>. All % rates are per transaction. Flat rates (₹) are fixed per transaction.'
+    + '</div>'
+    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto;margin-bottom:18px">'
+    + '<table style="width:100%;border-collapse:collapse;min-width:600px">'
+    + '<thead><tr style="background:var(--bg3)">'
+    + '<th style="padding:10px;text-align:left;font-size:.7rem;color:var(--muted2)">SERVICE</th>'
+    + headerCols
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + (CU.role === 'admin' ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">'
+    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:12px">✏️ Edit Commission Rates</div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:12px">Select a service and role to update commission rate. Changes apply network-wide.</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">SERVICE</div>'
+    + '<select id="comm-svc" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem">'
+    + services.map(function(s){ return '<option>'+s.name+'</option>'; }).join('')
+    + '</select></div>'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">ROLE</div>'
+    + '<select id="comm-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem">'
+    + roles.map(function(r){ return '<option value="'+r.key+'">'+r.label+'</option>'; }).join('')
+    + '</select></div>'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:4px">NEW RATE</div>'
+    + '<input type="number" id="comm-rate" placeholder="e.g. 0.50" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.78rem"></div>'
+    + '<button onclick="saveCommissionRate()" style="padding:8px 16px;background:var(--green);border:none;border-radius:8px;color:#000;font-weight:700;font-size:.78rem;cursor:pointer">Save</button>'
+    + '</div></div>' : '');
+}
+
+function saveCommissionRate(){
+  var svc  = document.getElementById('comm-svc').value;
+  var role = document.getElementById('comm-role').value;
+  var rate = document.getElementById('comm-rate').value;
+  if(!rate){ toast('Enter a rate','e'); return; }
+  // Save to Firestore commission_config
+  if(db){
+    db.collection('bankme_config').doc('commission').set({
+      [svc + '_' + role]: parseFloat(rate)
+    }, { merge: true })
+    .then(function(){ toast('✅ Commission rate updated!','s'); renderCommission(); })
+    .catch(function(){ toast('Saved locally (Firestore update failed)','i'); });
+  } else {
+    toast('✅ Rate noted (connect Firestore to persist)','i');
+  }
+}
+
+// ══════════════════════════════════════
+// API KEYS PAGE (Admin only)
+// ══════════════════════════════════════
+var API_KEY_SECTIONS = [
+  {
+    id: 'business', label: '🏢 Business Identity', color: '#f59e0b',
+    keys: [
+      {id:'gst_number',      label:'GST Number',                type:'text',    hint:'15-digit GSTIN e.g. 33AAAAA0000A1Z5'},
+      {id:'msme_number',     label:'MSME / Udyam Number',       type:'text',    hint:'e.g. UDYAM-TN-00-0000000'},
+      {id:'cin_number',      label:'CIN (Company ID Number)',   type:'text',    hint:'21-char CIN e.g. U74999TN2020PTC123456'},
+      {id:'pan_number',      label:'Business PAN',              type:'text',    hint:'10-char PAN of company/firm'},
+      {id:'tan_number',      label:'TAN Number',                type:'text',    hint:'Tax Deduction Account Number'},
+      {id:'shop_licence',    label:'Shop & Establishment No.',  type:'text',    hint:'State shop/establishment licence number'},
+      {id:'fssai_number',    label:'FSSAI Licence (if any)',    type:'text',    hint:'Food licence number if applicable'},
+    ]
+  },
+  {
+    id: 'sms', label: '📱 SMS / OTP', color: '#06b6d4',
+    keys: [
+      {id:'msg91_auth',    label:'MSG91 Auth Key',      type:'password', hint:'From MSG91 Dashboard → API'},
+      {id:'msg91_tmpl',    label:'MSG91 OTP Template ID',type:'text',    hint:'DLT approved template ID'},
+      {id:'msg91_sender',  label:'MSG91 Sender ID',      type:'text',    hint:'e.g. PAYPE, BANKME'},
+    ]
+  },
+  {
+    id: 'whatsapp', label: '💬 WhatsApp Business', color: '#25d366',
+    keys: [
+      {id:'wa_token',      label:'WhatsApp API Token',   type:'password', hint:'Meta Business API token'},
+      {id:'wa_phone_id',   label:'Phone Number ID',       type:'text',    hint:'From Meta developer portal'},
+      {id:'wa_waba_id',    label:'WABA ID',               type:'text',    hint:'WhatsApp Business Account ID'},
+    ]
+  },
+  {
+    id: 'payment', label: '💳 Payment Gateway', color: '#f59e0b',
+    keys: [
+      {id:'razorpay_key',  label:'Razorpay Key ID',       type:'text',    hint:'rzp_live_...'},
+      {id:'razorpay_secret',label:'Razorpay Secret',      type:'password', hint:'Razorpay secret key'},
+      {id:'cashfree_id',   label:'Cashfree App ID',        type:'text',    hint:'Cashfree merchant app ID'},
+      {id:'cashfree_secret',label:'Cashfree Secret',       type:'password', hint:'Cashfree secret key'},
+    ]
+  },
+  {
+    id: 'upi', label: '📲 UPI / Cash Out', color: '#6366f1',
+    keys: [
+      {id:'upi_api_key',     label:'UPI API Key',              type:'password', hint:'From your UPI partner (Razorpay/PayU/Cashfree)'},
+      {id:'upi_merchant_id', label:'UPI Merchant ID',           type:'text',    hint:'Your registered UPI merchant ID'},
+      {id:'upi_vpa',         label:'UPI VPA / Handle',          type:'text',    hint:'e.g. merchant@ybl or merchant@razorpay'},
+      {id:'upi_cashout_key', label:'UPI Cash Out API Key',      type:'password', hint:'Specific key for cash-out/payout services'},
+      {id:'upi_cashout_mid', label:'UPI Cash Out Merchant ID',  type:'text',    hint:'Cash-out merchant ID from your PSP'},
+      {id:'upi_secret',      label:'UPI API Secret',            type:'password', hint:'API secret for UPI transaction signing'},
+    ]
+  },
+  {
+    id: 'dmt', label: '💸 DMT (Domestic Money Transfer)', color: '#f43f5e',
+    keys: [
+      {id:'dmt_api_key',     label:'DMT API Key',               type:'password', hint:'From your DMT partner (Eko/Fino/PayNearby/RBL)'},
+      {id:'dmt_secret',      label:'DMT API Secret',            type:'password', hint:'DMT API secret key'},
+      {id:'dmt_merchant_id', label:'DMT Merchant ID',           type:'text',    hint:'Your registered DMT merchant/agent ID'},
+      {id:'dmt_agent_id',    label:'DMT Agent ID',              type:'text',    hint:'Sub-agent or retailer agent ID'},
+      {id:'dmt_partner',     label:'DMT Partner Name',          type:'text',    hint:'e.g. Eko, Fino, PayNearby, RBL, NSDL'},
+      {id:'dmt_callback_url',label:'DMT Callback URL',          type:'text',    hint:'Webhook URL for transaction status updates'},
+    ]
+  },
+  {
+    id: 'aeps', label: '🏦 AEPS / Banking', color: '#8b5cf6',
+    keys: [
+      {id:'aeps_api_key',    label:'AEPS API Key',              type:'password', hint:'From your AEPS partner (YBL/SBI/NSDL)'},
+      {id:'aeps_merchant',   label:'AEPS Merchant ID',          type:'text',    hint:'Your registered AEPS merchant ID'},
+      {id:'aeps_secret',     label:'AEPS API Secret',           type:'password', hint:'AEPS transaction signing secret'},
+      {id:'aeps_partner',    label:'AEPS Partner Name',         type:'text',    hint:'e.g. YBL, SBI, Fino, PayNearby'},
+      {id:'aeps_callback',   label:'AEPS Callback URL',         type:'text',    hint:'Webhook for AEPS transaction updates'},
+    ]
+  },
+  {
+    id: 'digilocker', label: '🆔 DigiLocker / KYC', color: '#ef4444',
+    keys: [
+      {id:'digi_client_id',  label:'DigiLocker Client ID',      type:'text',    hint:'From NIC DigiLocker portal'},
+      {id:'digi_secret',     label:'DigiLocker Client Secret',  type:'password',hint:'DigiLocker OAuth secret'},
+      {id:'nsdl_api_key',    label:'NSDL PAN API Key',          type:'password', hint:'For PAN card services'},
+      {id:'aadhaar_key',     label:'Aadhaar eKYC Key',          type:'password', hint:'UIDAI eKYC partner key'},
+    ]
+  },
+  {
+    id: 'notification', label: '🔔 Notifications', color: '#f97316',
+    keys: [
+      {id:'fcm_server_key',  label:'FCM Server Key',            type:'password', hint:'Firebase Cloud Messaging key'},
+      {id:'fcm_sender_id',   label:'FCM Sender ID',             type:'text',    hint:'Firebase project sender ID'},
+      {id:'email_smtp_host', label:'SMTP Host',                 type:'text',    hint:'e.g. smtp.gmail.com'},
+      {id:'email_smtp_user', label:'SMTP Username',             type:'text',    hint:'Your email address'},
+      {id:'email_smtp_pass', label:'SMTP Password',             type:'password', hint:'App password (not login password)'},
+    ]
+  },
+  {
+    id: 'insurance', label: '🛡️ Insurance', color: '#ec4899',
+    keys: [
+      {id:'ins_api_key',     label:'Insurance API Key',         type:'password', hint:'PoSP / IRDAI partner API key'},
+      {id:'ins_agent_code',  label:'Insurance Agent Code',      type:'text',    hint:'Your IRDAI registered agent code'},
+    ]
+  },
+  {
+    id: 'bbps', label: '⚡ BBPS / Bill Payment', color: '#10b981',
+    keys: [
+      {id:'bbps_api_key',  label:'BBPS API Key',          type:'password', hint:'BBPS partner API key'},
+      {id:'bbps_agent_id', label:'BBPS Agent ID',          type:'text',    hint:'Your BBPS agent ID'},
+    ]
+  },
+  {
+    id: 'travel', label: '✈️ Travel', color: '#3b82f6',
+    keys: [
+      {id:'travel_api_key',label:'Travel API Key',         type:'password', hint:'Amadeus / TBO / Riya Travel key'},
+      {id:'travel_agent',  label:'Travel Agent ID',         type:'text',    hint:'Your registered travel agent ID'},
+    ]
+  },
+  {
+    id: 'loan', label: '🏦 Loan / Finance', color: '#14b8a6',
+    keys: [
+      {id:'loan_api_key',  label:'Loan API Key',           type:'password', hint:'NBFC / DSA partner API key'},
+      {id:'loan_agent_id', label:'Loan Agent ID',           type:'text',    hint:'Your DSA agent ID'},
+    ]
+  },
+];
+
+// Load saved API keys from Firestore/localStorage
+var _apiKeys = {};
+
+function renderApiKeys(){
+  var el = document.getElementById('page-apikeys');
+  if(!el) return;
+
+  // Load keys from localStorage as fallback
+  try { _apiKeys = JSON.parse(localStorage.getItem('bankme_apikeys') || '{}'); } catch(e){}
+
+  var sectionsHTML = API_KEY_SECTIONS.map(function(sec){
+    var keysHTML = sec.keys.map(function(k){
+      var val = _apiKeys[k.id] || '';
+      return '<div style="margin-bottom:12px">'
+        + '<div style="font-size:.72rem;font-weight:600;color:var(--text);margin-bottom:3px">'+k.label+'</div>'
+        + '<div style="font-size:.65rem;color:var(--muted2);margin-bottom:5px">'+k.hint+'</div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<input type="'+k.type+'" id="apikey_'+k.id+'" value="'+val+'" placeholder="Enter '+k.label+'" '
+        + 'style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.78rem;font-family:monospace">'
+        + '<button onclick="toggleKeyVisibility(\'apikey_'+k.id+'\')" style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--muted2);cursor:pointer;font-size:.75rem">👁</button>'
+        + '</div></div>';
+    }).join('');
+
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+      + '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;color:'+sec.color+'">'+sec.label+'</div>'
+      + '<button onclick="saveApiSection(\''+sec.id+'\')" style="padding:5px 14px;background:'+sec.color+';border:none;border-radius:8px;color:#000;font-weight:700;font-size:.72rem;cursor:pointer">Save</button>'
+      + '</div>'
+      + keysHTML
+      + '</div>';
+  }).join('');
+
+  el.innerHTML = '<div class="page-title">🔑 API Keys</div>'
+    + '<div class="page-sub">Manage all service API credentials — stored securely, never exposed to customers</div>'
+    + '<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:.78rem;color:#f87171">'
+    + '🔒 API keys are stored in your browser\'s secure storage and Firestore. Never share these keys with anyone.'
+    + '</div>'
+    + sectionsHTML
+    + '<div style="text-align:center;margin-top:16px">'
+    + '<button onclick="saveAllApiKeys()" style="padding:12px 32px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;border-radius:12px;color:#000;font-weight:700;font-size:.9rem;cursor:pointer">💾 Save All API Keys</button>'
+    + '</div>';
+}
+
+function toggleKeyVisibility(id){
+  var inp = document.getElementById(id);
+  if(!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function saveApiSection(secId){
+  var sec = API_KEY_SECTIONS.find(function(s){ return s.id === secId; });
+  if(!sec) return;
+  sec.keys.forEach(function(k){
+    var inp = document.getElementById('apikey_'+k.id);
+    if(inp && inp.value.trim()) _apiKeys[k.id] = inp.value.trim();
+  });
+  saveApiKeysToDB();
+  toast('✅ '+sec.label+' keys saved!','s');
+}
+
+function saveAllApiKeys(){
+  API_KEY_SECTIONS.forEach(function(sec){
+    sec.keys.forEach(function(k){
+      var inp = document.getElementById('apikey_'+k.id);
+      if(inp && inp.value.trim()) _apiKeys[k.id] = inp.value.trim();
+    });
+  });
+  saveApiKeysToDB();
+  toast('✅ All API keys saved!','s');
+}
+
+function saveApiKeysToDB(){
+  // Save to localStorage
+  try { localStorage.setItem('bankme_apikeys', JSON.stringify(_apiKeys)); } catch(e){}
+  // Save to Firestore
+  if(db){
+    db.collection('bankme_config').doc('api_keys').set(_apiKeys, { merge: true })
+    .catch(function(){ console.log('Firestore save failed, using localStorage'); });
+  }
+}
+
+// Get API key by id (for use in service modules)
+function getApiKey(id){
+  return _apiKeys[id] || '';
+}
+
+// ══════════════════════════════════════
+// WHITELABEL MODE — Brand Customization
+// ══════════════════════════════════════
+function renderWhitelabelSettings(){
+  var el = document.getElementById('page-profile');
+  if(!el) return;
+  // Inject whitelabel section into profile page
+  var wlSection = document.getElementById('wl-brand-section');
+  if(wlSection) return; // already rendered
+
+  var wlDiv = document.createElement('div');
+  wlDiv.id = 'wl-brand-section';
+  wlDiv.style.cssText = 'margin-top:16px';
+  wlDiv.innerHTML = '<div style="background:var(--bg2);border:1px solid rgba(139,92,246,.3);border-radius:14px;padding:16px">'
+    + '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;color:var(--purple);margin-bottom:14px">🏷️ White Label Branding</div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:.72rem;font-weight:600;color:var(--muted2);margin-bottom:4px">Brand Name</div>'
+    + '<input type="text" id="wl-brand-name" value="'+(CU.brandName||'')+'" placeholder="Your company name" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.82rem;box-sizing:border-box"></div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:.72rem;font-weight:600;color:var(--muted2);margin-bottom:4px">Support Email</div>'
+    + '<input type="email" id="wl-support-email" value="'+(CU.supportEmail||'')+'" placeholder="support@yourbrand.com" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.82rem;box-sizing:border-box"></div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:.72rem;font-weight:600;color:var(--muted2);margin-bottom:4px">Support Mobile</div>'
+    + '<input type="tel" id="wl-support-mobile" value="'+(CU.supportMobile||'')+'" placeholder="+91 98765 43210" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.82rem;box-sizing:border-box"></div>'
+    + '<div style="margin-bottom:14px"><div style="font-size:.72rem;font-weight:600;color:var(--muted2);margin-bottom:4px">Brand Primary Color</div>'
+    + '<input type="color" id="wl-brand-color" value="'+(CU.brandColor||'#00d4aa')+'" style="width:60px;height:36px;border:none;border-radius:8px;cursor:pointer;background:none"></div>'
+    + '<button onclick="saveWhitelabelSettings()" style="width:100%;padding:10px;background:var(--purple);border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.85rem;cursor:pointer">💾 Save Brand Settings</button>'
+    + '</div>';
+  el.appendChild(wlDiv);
+}
+
+function saveWhitelabelSettings(){
+  var brandName    = document.getElementById('wl-brand-name').value.trim();
+  var supportEmail = document.getElementById('wl-support-email').value.trim();
+  var supportMobile= document.getElementById('wl-support-mobile').value.trim();
+  var brandColor   = document.getElementById('wl-brand-color').value;
+
+  CU.brandName     = brandName;
+  CU.supportEmail  = supportEmail;
+  CU.supportMobile = supportMobile;
+  CU.brandColor    = brandColor;
+
+  // Apply brand color
+  if(brandColor){
+    document.documentElement.style.setProperty('--rtai', brandColor);
+  }
+
+  // Save to Firestore
+  if(db && CU.uid){
+    db.collection('bankme_users').doc(CU.uid).update({
+      brandName: brandName,
+      supportEmail: supportEmail,
+      supportMobile: supportMobile,
+      brandColor: brandColor
+    }).catch(function(){});
+  }
+  toast('✅ Brand settings saved!','s');
+}
+
+// Hook into goPage for new pages
+var _origGoPage = goPage;
+goPage = function(pg){
+  _origGoPage(pg);
+  if(pg === 'commission') renderCommission();
+  if(pg === 'apikeys')    renderApiKeys();
+  if(pg === 'profile' && (CU && (CU.role==='whitelabel'||CU.role==='admin'))) {
+    setTimeout(renderWhitelabelSettings, 100);
+  }
+};
 </script>
 
 
