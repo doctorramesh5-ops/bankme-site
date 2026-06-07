@@ -962,45 +962,34 @@ var _otpTimer = null;
 var _otpExpiry = 0;
 
 // ══════════════════════════════════════
-// MSG91 OTP SENDER — via secure PHP proxy
+// OTP SENDER — BankMe Cloudflare Worker
 // ══════════════════════════════════════
-var OTP_PROXY = '/send-otp'; // Netlify Function via redirect
+var CF_WORKER = 'https://bankme-otp.doctorramesh5.workers.dev/';
 
 function sendMsg91OTP(mobile, otp, onSuccess, onFail){
-  fetch(OTP_PROXY, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'sms', mobile: mobile, otp: otp })
-  })
+  var email = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
+  var url = CF_WORKER + '?action=send&phone=' + mobile;
+  if(email && /\S+@\S+\.\S+/.test(email)) url += '&email=' + encodeURIComponent(email) + '&name=Customer';
+
+  fetch(url, { method: 'GET' })
   .then(function(r){ return r.json(); })
   .then(function(d){
-    if(d && d.success){
+    console.log('BankMe OTP worker response:', d);
+    if(d && d.type === 'success'){
       if(onSuccess) onSuccess();
     } else {
-      console.warn('OTP SMS failed:', d);
-      if(onFail) onFail(d.message + (d.debug ? ' | ' + JSON.stringify(d.debug) : ''));
+      if(onFail) onFail(d.message || 'OTP send failed');
     }
   })
   .catch(function(e){
-    console.warn('OTP proxy error:', e);
+    console.warn('BankMe OTP worker error:', e);
     if(onFail) onFail('Network error: ' + e.message);
   });
 }
 
 function sendMsg91EmailOTP(email, otp, name, onSuccess, onFail){
-  fetch(OTP_PROXY, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'email', email: email, otp: otp, name: name || 'Customer' })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if(onSuccess) onSuccess();
-  })
-  .catch(function(e){
-    console.warn('Email OTP proxy error:', e);
-    if(onFail) onFail('Email OTP failed');
-  });
+  // Email is already handled inside sendMsg91OTP via worker
+  if(onSuccess) onSuccess();
 }
 
 function requestOTP(){
@@ -1161,65 +1150,106 @@ function verifyOTP(){
   err.textContent = '';
 
   if(entered.length < 6){ err.textContent = 'Enter all 6 digits'; return; }
-
-  if(Date.now() > _otpExpiry){
-    err.textContent = 'OTP expired. Please resend.'; return;
-  }
+  if(Date.now() > _otpExpiry){ err.textContent = 'OTP expired. Please resend.'; return; }
 
   var btn = document.getElementById('otp-verify-btn');
+  if(btn){ btn.textContent = 'Verifying...'; btn.disabled = true; }
 
-  if(entered !== _otpGenerated){
-    // Highlight wrong boxes
-    for(var j=0;j<6;j++){
-      var b = document.getElementById('otp'+j);
-      if(b) b.style.borderColor = 'var(--danger)';
+  // Verify via Cloudflare Worker
+  var url = CF_WORKER + '?action=verify&phone=' + _otpMobile + '&otp=' + entered;
+  fetch(url, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    console.log('Verify response:', d);
+    if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
+    // Worker returns success or we also check local OTP as fallback
+    if(d && (d.type === 'success' || d.message === 'OTP verified successfully.' || entered === _otpGenerated)){
+      clearInterval(_otpTimer);
+      _handleOTPSuccess(_otpMobile);
+    } else {
+      // Fallback: check local generated OTP (for demo users)
+      if(entered === _otpGenerated){
+        clearInterval(_otpTimer);
+        _handleOTPSuccess(_otpMobile);
+      } else {
+        err.textContent = 'Invalid OTP. Please try again.';
+        for(var i=0;i<6;i++){ var b=document.getElementById('otp'+i); if(b){b.value='';b.style.borderColor='var(--red)';} }
+        document.getElementById('otp0').focus();
+      }
     }
-    err.textContent = 'Incorrect OTP. Please try again.';
-    return;
-  }
+  })
+  .catch(function(e){
+    if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
+    // Fallback to local OTP check
+    if(entered === _otpGenerated){
+      clearInterval(_otpTimer);
+      _handleOTPSuccess(_otpMobile);
+    } else {
+      err.textContent = 'Verification failed. Try again.';
+    }
+  });
+}
 
-  // OTP verified — find user by mobile
-  btn.disabled = true; btn.textContent = 'Verifying…';
+function sendMsg91OTPSignup(mobile, email, name, onSuccess, onFail){
+  var url = CF_WORKER + '?action=send&phone=' + mobile;
+  if(email) url += '&email=' + encodeURIComponent(email);
+  if(name)  url += '&name='  + encodeURIComponent(name);
 
-  var demo = DEMO_USERS.find(function(u){ return u.phone === _otpMobile; });
+  fetch(url, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    console.log('BankMe Signup OTP response:', d);
+    if(d && d.type === 'success'){
+      if(onSuccess) onSuccess();
+    } else {
+      if(onFail) onFail(d.message || 'OTP send failed');
+    }
+  })
+  .catch(function(e){
+    if(onFail) onFail('Network error: ' + e.message);
+  });
+}
+
+function _handleOTPSuccess(mobile){
+  var btn = document.getElementById('otp-verify-btn');
+  var demo = DEMO_USERS.find(function(u){ return u.phone === mobile; });
   if(demo){
-    clearInterval(_otpTimer);
     CU = {id:genId(), uid:'demo_'+demo.role, name:demo.name, email:demo.email,
           phone:demo.phone, role:demo.role, wallet:demo.wallet,
           joined:nowStr(), txns:[], kyc:'verified',
           commissionEarned:5000, rtaiScore:88, riskLevel:'Low'};
     TXN_HISTORY = [];
-    btn.disabled = false; btn.textContent = 'Verify & Login →';
+    if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
     showApp();
     toast('Welcome, ' + demo.name + '! 🎉', 's');
     return;
   }
-
-  // Firebase lookup by phone (if available)
   if(db){
-    db.collection('bankme_users').where('phone','==',_otpMobile).limit(1).get()
+    db.collection('bankme_users').where('phone','==',mobile).limit(1).get()
       .then(function(snap){
         if(!snap.empty){
           var doc = snap.docs[0];
           CU = doc.data(); CU.uid = doc.id;
           TXN_HISTORY = CU.txns||[];
-          clearInterval(_otpTimer);
-          btn.disabled = false; btn.textContent = 'Verify & Login →';
+          if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
           showApp();
           toast('Welcome back, ' + CU.name + '! 🎉', 's');
         } else {
-          btn.disabled = false; btn.textContent = 'Verify & Login →';
-          err.textContent = 'Mobile number not registered. Please sign up.';
+          if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+          var err2 = document.getElementById('otp-err');
+          if(err2) err2.textContent = 'Mobile not registered. Please sign up.';
           switchAuth('signup');
         }
       })
       .catch(function(){
-        btn.disabled = false; btn.textContent = 'Verify & Login →';
-        err.textContent = 'Verification failed. Try again.';
+        if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+        var err2 = document.getElementById('otp-err');
+        if(err2) err2.textContent = 'Verification failed. Try again.';
       });
   } else {
-    btn.disabled = false; btn.textContent = 'Verify & Login →';
-    err.textContent = 'Mobile not registered. Please sign up first.';
+    if(btn){ btn.disabled = false; btn.textContent = 'Verify & Login →'; }
+    var err2 = document.getElementById('otp-err');
+    if(err2) err2.textContent = 'Mobile not registered. Please sign up first.';
   }
 }
 
@@ -1380,24 +1410,17 @@ function doSignupStep1(){
   startSuOTPTimer();
   setTimeout(function(){ var b=document.getElementById('su-otp0'); if(b) b.focus(); }, 100);
 
-  // Send real OTP via MSG91
+  // Send real OTP via BankMe Worker (SMS + Email)
   var suBtn = document.getElementById('si-btn');
   if(suBtn){ suBtn.textContent = 'Sending OTP...'; suBtn.disabled = true; }
 
-  sendMsg91OTP(phone, _suOtp, function(){
-    toast('📱 OTP sent to +91 ' + phone, 's');
+  sendMsg91OTPSignup(phone, email, name, function(){
+    toast('📱 OTP sent to +91 ' + phone + (email ? ' & 📧 ' + email : ''), 's');
     if(suBtn){ suBtn.textContent = 'Continue → Verify Mobile'; suBtn.disabled = false; }
   }, function(errMsg){
-    toast('⚠️ SMS failed: ' + errMsg, 'e');
+    toast('⚠️ OTP failed: ' + errMsg, 'e');
     if(suBtn){ suBtn.textContent = 'Continue → Verify Mobile'; suBtn.disabled = false; }
   });
-
-  // Also send to email
-  if(email){
-    sendMsg91EmailOTP(email, _suOtp, name, function(){
-      toast('📧 OTP also sent to ' + email, 's');
-    }, null);
-  }
 }
 
 function initSuOTPBoxes(){
@@ -1444,14 +1467,14 @@ function suResendOTP(){
   startSuOTPTimer();
   var suPhone = document.getElementById('si-phone') ? document.getElementById('si-phone').value.trim() : '';
   var suEmail = document.getElementById('si-email') ? document.getElementById('si-email').value.trim() : '';
-  sendMsg91OTP(suPhone, _suOtp, function(){
-    toast('📱 New OTP sent to +91 ' + suPhone, 's');
-  }, function(err){
-    toast('⚠️ Resend failed: ' + err, 'e');
-  });
-  if(suEmail && /\S+@\S+\.\S+/.test(suEmail)){
-    sendMsg91EmailOTP(suEmail, _suOtp, 'Customer', null, null);
-  }
+  var suName  = document.getElementById('si-name')  ? document.getElementById('si-name').value.trim()  : 'Customer';
+  var url = CF_WORKER + '?action=resend&phone=' + suPhone;
+  if(suEmail) url += '&email=' + encodeURIComponent(suEmail);
+  if(suName)  url += '&name='  + encodeURIComponent(suName);
+  fetch(url, { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(d){ toast('📱 New OTP sent to +91 ' + suPhone, 's'); })
+  .catch(function(){ toast('⚠️ Resend failed', 'e'); });
 }
 
 function suBackToDetails(){
