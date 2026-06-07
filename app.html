@@ -57,8 +57,29 @@
   --rtai:#f59e0b;--rtai2:#d97706;
 }
 
-/* Theme switcher button */
-.theme-btn{
+/* Bell notification pulse */
+@keyframes bell-pulse {
+  0%,100%{ transform:scale(1); }
+  50%{ transform:scale(1.15); }
+}
+#bell-btn.has-unread{
+  animation: bell-pulse 2s ease-in-out infinite;
+  border-color:var(--rtai)!important;
+  background:var(--rtai)18!important;
+}
+#bell-btn:hover{
+  border-color:var(--rtai)!important;
+  background:var(--rtai)18!important;
+  transform:scale(1.05);
+}
+/* Mobile - hide theme switcher labels on small screens */
+@media(max-width:480px){
+  #theme-switcher span{ display:none; }
+  .theme-btn{ width:22px!important; height:22px!important; }
+  .rtai-badge{ display:none!important; }
+  #theme-switcher{ padding:3px 6px!important; gap:4px!important; }
+}
+
   width:30px;height:30px;border-radius:50%;border:2px solid var(--border2);
   cursor:pointer;transition:transform .2s;flex-shrink:0;
 }
@@ -566,19 +587,19 @@ main{flex:1;overflow:auto}
       <button class="nb" id="nb-profile" onclick="goPage('profile')">⚙ Profile</button>
     </div>
     <div class="tb-right">
-      <span class="rtai-badge">RTAI ✓</span>
-      <div id="theme-switcher" title="Change Theme">
-        <span style="font-size:.6rem;color:var(--muted2);font-weight:600;white-space:nowrap">🎨</span>
+      <span class="rtai-badge" style="display:none" id="rtai-badge-top">RTAI ✓</span>
+      <span class="wallet-chip" id="wallet-chip">₹0.00</span>
+      <div id="bell-btn" onclick="toggleNotifications()" style="position:relative;cursor:pointer;width:38px;height:38px;border-radius:50%;background:var(--bg3);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;transition:all .2s">
+        🔔
+        <span id="bell-badge" style="position:absolute;top:-3px;right:-3px;background:#ef4444;color:#fff;border-radius:100px;font-size:.58rem;font-weight:900;padding:2px 5px;display:none;min-width:16px;text-align:center;box-shadow:0 0 0 2px var(--bg2)">0</span>
+      </div>
+      <div id="theme-switcher" title="Change Theme" style="display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:100px;padding:4px 8px">
+        <span style="font-size:.65rem;color:var(--muted2);font-weight:700">🎨</span>
         <div class="theme-btn active" id="th-dark"  onclick="setTheme('dark')"  style="background:linear-gradient(135deg,#040810,#0d1520)" title="Dark"></div>
         <div class="theme-btn"        id="th-light" onclick="setTheme('light')" style="background:linear-gradient(135deg,#f0f4f8,#ffffff)" title="Light Banking"></div>
         <div class="theme-btn"        id="th-blue"  onclick="setTheme('blue')"  style="background:linear-gradient(135deg,#0a1628,#2a5090)" title="Blue Pro"></div>
         <div class="theme-btn"        id="th-green" onclick="setTheme('green')" style="background:linear-gradient(135deg,#f5faf5,#16a34a)" title="Green Finance"></div>
         <div class="theme-btn"        id="th-gold"  onclick="setTheme('gold')"  style="background:linear-gradient(135deg,#0d0a00,#f59e0b)" title="Gold Premium"></div>
-      </div>
-      <span class="wallet-chip" id="wallet-chip">₹0.00</span>
-      <div id="bell-btn" onclick="toggleNotifications()" style="position:relative;cursor:pointer;width:34px;height:34px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">
-        🔔
-        <span id="bell-badge" style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:100px;font-size:.55rem;font-weight:700;padding:1px 4px;display:none">0</span>
       </div>
       <div class="avatar" id="user-avatar">U</div>
     </div>
@@ -657,9 +678,14 @@ var DEMO_USERS = [
 
 var SERVICES = [
   {id:'aeps',       name:'AEPS',          icon:'👆', color:'#10b981', desc:'Aadhaar Banking',        cat:'banking'},
-  {id:'upicashin',  name:'UPI Cash Out',  icon:'⬆️', color:'#ef4444', desc:'Send via UPI / Collect', cat:'banking'},
+  {id:'upicashin',  name:'UPI Cash In',   icon:'⬇️', color:'#10b981', desc:'Collect via UPI',        cat:'banking'},
+  {id:'upicashout', name:'UPI Cash Out',  icon:'⬆️', color:'#ef4444', desc:'Send via UPI',           cat:'banking'},
+  {id:'cashin',     name:'Cash In',       icon:'💵', color:'#22c55e', desc:'Deposit Cash',           cat:'banking'},
+  {id:'cashout',    name:'Cash Out',      icon:'💴', color:'#f43f5e', desc:'Withdraw Cash',          cat:'banking'},
   {id:'dmt',        name:'Money Transfer',icon:'💸', color:'#3b82f6', desc:'Domestic Transfer',      cat:'banking'},
   {id:'bbps',       name:'Bill Pay',      icon:'🧾', color:'#f59e0b', desc:'Utility Bills',          cat:'banking'},
+  {id:'creditcard', name:'Credit Card',   icon:'💳', color:'#6366f1', desc:'Credit Card Services',   cat:'banking'},
+  {id:'cms',        name:'Cash Mgmt',     icon:'🏧', color:'#0ea5e9', desc:'Cash Management (CMS)',  cat:'finance'},
   {id:'demat',      name:'Demat',         icon:'📈', color:'#8b5cf6', desc:'Demat Account',          cat:'investment'},
   {id:'mutualfund', name:'Mutual Fund',   icon:'📊', color:'#ec4899', desc:'Invest in Funds',        cat:'investment'},
   {id:'erupee',     name:'eRupee',        icon:'₹',  color:'#14b8a6', desc:'Digital CBDC',           cat:'banking'},
@@ -2169,6 +2195,10 @@ function openService(svcId){
     erupee: '<div id="erupee-root"></div>',
     upicashin: '<div id="upicashin-root"></div>',
     upicashout:'<div id="upicashout-root"></div>',
+    cashin:    '<div id="cashin-root"></div>',
+    cashout:   '<div id="cashout-root"></div>',
+    creditcard:'<div id="creditcard-root"></div>',
+    cms:       '<div id="cms-root"></div>',
     pancard:   '<label class="flabel">Application Type</label><select class="fsel" id="m-apptype"><option value="new">New PAN Card</option><option value="reprint">PAN Reprint</option><option value="correction">PAN Correction</option></select><label class="flabel">Full Name</label><input class="finp" id="m-name" placeholder="As per Aadhaar"/><label class="flabel">Date of Birth</label><input class="finp" id="m-dob" type="date"/><label class="flabel">Aadhaar Number</label><input class="finp" id="m-aadhaar" placeholder="12-digit Aadhaar" maxlength="12"/>',
     train:     '<label class="flabel">From Station</label><input class="finp" id="m-from" placeholder="e.g. Mumbai CST"/><label class="flabel">To Station</label><input class="finp" id="m-to" placeholder="e.g. Delhi"/><label class="flabel">Travel Date</label><input class="finp" id="m-date" type="date"/><label class="flabel">Class</label><select class="fsel" id="m-class"><option>Sleeper (SL)</option><option>3rd AC (3A)</option><option>2nd AC (2A)</option><option>1st AC (1A)</option></select>',
     bus:       '<label class="flabel">From City</label><input class="finp" id="m-from" placeholder="e.g. Chennai"/><label class="flabel">To City</label><input class="finp" id="m-to" placeholder="e.g. Coimbatore"/><label class="flabel">Travel Date</label><input class="finp" id="m-date" type="date"/><label class="flabel">Seats</label><input class="finp" id="m-seats" type="number" value="1"/>',
@@ -2178,7 +2208,7 @@ function openService(svcId){
     loan:       '<div id="loan-root"></div>',
   };
   var defaultForm = '<label class="flabel">Mobile / Account</label><input class="finp" id="m-phone" placeholder="Mobile number"/><label class="flabel">Amount (₹)</label><input class="finp" id="m-amount" type="number" placeholder="Enter amount"/>';
-  var noProcessBtn = ['aeps','dmt','bbps','erupee','upicashin','upicashout','demat','mutualfund','insurance','loan'];
+  var noProcessBtn = ['aeps','dmt','bbps','erupee','upicashin','upicashout','cashin','cashout','creditcard','cms','demat','mutualfund','insurance','loan'];
 
   // ── Build modal with DOM (zero escaping issues) ──
   var box = document.getElementById('svc-modal-content');
@@ -2266,6 +2296,18 @@ function openService(svcId){
   }
   if(svcId === 'upicashout'){
     setTimeout(function(){ initUPICashOut(); }, 80);
+  }
+  if(svcId === 'cashin'){
+    setTimeout(function(){ initCashIn(); }, 80);
+  }
+  if(svcId === 'cashout'){
+    setTimeout(function(){ initCashOut(); }, 80);
+  }
+  if(svcId === 'creditcard'){
+    setTimeout(function(){ initCreditCard(); }, 80);
+  }
+  if(svcId === 'cms'){
+    setTimeout(function(){ initCMS(); }, 80);
   }
 }
 
@@ -5627,18 +5669,23 @@ function updateSubServices(){
   var subEl = document.getElementById('th-subsvc');
   if(!subEl) return;
   var SUB_SERVICES = {
-    wallet:    ['Add Money','Transfer','Withdraw','Refund'],
-    recharge:  ['Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
-    bbps:      ['Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
-    aeps:      ['Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
-    dmt:       ['IMPS Transfer','NEFT Transfer','Account Verify'],
-    upi:       ['UPI Cash In','UPI Cash Out','UPI Transfer'],
-    insurance: ['Life Insurance','Health Insurance','Vehicle Insurance','Term Plan'],
-    loan:      ['Personal Loan','Home Loan','Vehicle Loan','Business Loan'],
-    pan:       ['New PAN','PAN Reprint','PAN Correction'],
-    travel:    ['Flight Booking','Bus Booking','Hotel Booking','Train Booking'],
-    demat:     ['Demat Open','Trading Account'],
-    mf:        ['SIP Start','Lump Sum','Redemption'],
+    wallet:     ['Add Money','Transfer','Withdraw','Refund'],
+    recharge:   ['Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
+    bbps:       ['Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
+    aeps:       ['Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
+    dmt:        ['IMPS Transfer','NEFT Transfer','Account Verify'],
+    upicashin:  ['UPI Collect','QR Collection'],
+    upicashout: ['UPI Pay','UPI Transfer'],
+    cashin:     ['SBI','HDFC','Axis','ICICI','Fino','Paytm','Airtel','India Post'],
+    cashout:    ['SBI','HDFC','Axis','ICICI','Fino','Paytm','Airtel','India Post'],
+    creditcard: ['Card Issuance','Bill Payment','Card Upgrade','Block/Replace'],
+    cms:        ['Cash Pickup','Cash Delivery','ATM Replenishment','Vault Management','Cash in Transit'],
+    insurance:  ['Life Insurance','Health Insurance','Vehicle Insurance','Term Plan'],
+    loan:       ['Personal Loan','Home Loan','Vehicle Loan','Business Loan'],
+    pancard:    ['New PAN','PAN Reprint','PAN Correction'],
+    travel:     ['Flight Booking','Bus Booking','Hotel Booking','Train Booking'],
+    demat:      ['Demat Open','Trading Account'],
+    mutualfund: ['SIP Start','Lump Sum','Redemption'],
   };
   var subs = SUB_SERVICES[svc] || [];
   subEl.innerHTML = '<option value="all">All Sub-Services</option>'
@@ -8292,10 +8339,15 @@ function addNotification(msg, type, icon){
 
 function updateBellBadge(){
   var badge = document.getElementById('bell-badge');
+  var btn   = document.getElementById('bell-btn');
   if(!badge) return;
   var unread = _notifications.filter(function(n){ return !n.read; }).length;
   badge.textContent = unread > 99 ? '99+' : unread;
   badge.style.display = unread > 0 ? '' : 'none';
+  if(btn){
+    if(unread > 0) btn.classList.add('has-unread');
+    else btn.classList.remove('has-unread');
+  }
 }
 
 function toggleNotifications(){
@@ -8393,39 +8445,55 @@ function renderReferral(){
   var refCode = 'REF-' + (CU.uid||'').slice(-6).toUpperCase() + '-' + CU.role.slice(0,3).toUpperCase();
   var refLink = baseUrl + '?ref=' + refCode;
 
-  // Load referred users
   var refUsers = (window._networkUsers||[]).filter(function(u){ return u.referredBy === refCode; });
 
-  // Manual add form
-  var manualHTML = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">'
-    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:12px">➕ Manually Add Customer</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Full Name</div>'
-    + '<input type="text" id="ref-name" placeholder="Customer full name" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Mobile Number</div>'
-    + '<input type="tel" id="ref-mobile" placeholder="10-digit mobile" maxlength="10" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
-    + '</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Email (Optional)</div>'
-    + '<input type="email" id="ref-email" placeholder="customer@email.com" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
-    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Role</div>'
-    + '<select id="ref-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem">'
-    + (CU.role==='superdist' ? '<option value="distributor">Distributor</option><option value="retailer">Retailer</option>' : '')
-    + (CU.role==='distributor' ? '<option value="retailer">Retailer</option>' : '')
-    + '<option value="customer">Customer</option>'
-    + '</select></div>'
-    + '</div>'
-    + '<button onclick="addReferralCustomer()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;border-radius:10px;color:#000;font-weight:700;font-size:.85rem;cursor:pointer">➕ Add to My Network</button>'
-    + '</div>';
+  // ── Role-based rules ──
+  // superdist   → manual add: distributor, retailer ONLY
+  // distributor → manual add: retailer ONLY
+  // retailer    → NO manual add, referral link only
+  var canManualAdd = (CU.role === 'superdist' || CU.role === 'distributor');
+
+  var roleOptions = '';
+  if(CU.role === 'superdist')   roleOptions = '<option value="distributor">Distributor</option><option value="retailer">Retailer</option>';
+  if(CU.role === 'distributor') roleOptions = '<option value="retailer">Retailer</option>';
+
+  var roleDesc = {
+    superdist:   'Manually add Distributors & Retailers · Share referral link to grow network',
+    distributor: 'Manually add Retailers · Share referral link to grow network',
+    retailer:    'Share your referral link — earn commission on every new customer transaction',
+  };
+
+  var manualHTML = canManualAdd
+    ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">'
+      + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:12px">➕ Manually Add to Network</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+      + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Full Name</div>'
+      + '<input type="text" id="ref-name" placeholder="Full name (as on PAN)" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>'
+      + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Mobile Number</div>'
+      + '<input type="tel" id="ref-mobile" placeholder="10-digit mobile" maxlength="10" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'
+      + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Email (Optional)</div>'
+      + '<input type="email" id="ref-email" placeholder="email@domain.com" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
+      + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Role</div>'
+      + '<select id="ref-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem">'
+      + roleOptions
+      + '</select></div>'
+      + '</div>'
+      + '<button onclick="addNetworkMember()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;border-radius:10px;color:#000;font-weight:700;font-size:.85rem;cursor:pointer">➕ Add to My Network</button>'
+      + '</div>'
+    : '<div style="background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.15);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:.78rem;color:var(--muted2)">'
+      + '💡 As a Retailer, you cannot manually add members. Share your referral link below — customers who register via your link are auto-added to your network.'
+      + '</div>';
 
   var refListHTML = refUsers.length
     ? refUsers.map(function(u){
         var rc = getRC(u.role);
         return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
           + '<div style="display:flex;align-items:center;gap:10px">'
-          + '<div style="width:34px;height:34px;border-radius:50%;background:'+rc.color+'22;display:flex;align-items:center;justify-content:center;font-weight:700;color:'+rc.color+'">'+(u.name||'?')[0].toUpperCase()+'</div>'
+          + '<div style="width:34px;height:34px;border-radius:50%;background:'+rc.color+'22;display:flex;align-items:center;justify-content:center;font-weight:700;color:'+rc.color+'">'+(u.name||'?')[0]+'</div>'
           + '<div><div style="font-size:.82rem;font-weight:600">'+u.name+'</div>'
-          + '<div style="font-size:.7rem;color:var(--muted2)">'+u.phone+' · '+u.email+'</div>'
+          + '<div style="font-size:.7rem;color:var(--muted2)">'+u.phone+(u.email?' · '+u.email:'')+'</div>'
           + '<span style="font-size:.62rem;background:'+rc.color+'20;color:'+rc.color+';padding:1px 6px;border-radius:100px;font-weight:700">'+rc.label+'</span>'
           + '</div></div>'
           + '<div style="text-align:right">'
@@ -8433,28 +8501,26 @@ function renderReferral(){
           + '<div style="font-size:.62rem;color:var(--muted2)">'+u.joined+'</div>'
           + '</div></div>';
       }).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:6px">👥</div>No referrals yet. Share your link!</div>';
+    : '<div style="text-align:center;padding:20px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:6px">👥</div>No members via your link yet</div>';
 
   el.innerHTML = '<div class="page-title">🔗 Referral & Network</div>'
-    + '<div class="page-sub">Your referral link, share to grow your network</div>'
+    + '<div class="page-sub">'+(roleDesc[CU.role]||'Grow your network')+'</div>'
 
-    // Referral Code Card
-    + '<div style="background:linear-gradient(135deg,rgba(0,212,170,.1),rgba(99,102,241,.1));border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:16px;margin-bottom:14px">'
-    + '<div style="font-size:.72rem;color:var(--muted2);font-weight:600;margin-bottom:6px">YOUR REFERRAL CODE</div>'
-    + '<div style="font-family:var(--font-head);font-size:1.4rem;font-weight:900;color:var(--rtai);letter-spacing:2px;margin-bottom:10px">'+refCode+'</div>'
-    + '<div style="font-size:.72rem;color:var(--muted2);margin-bottom:8px">YOUR REFERRAL LINK</div>'
+    + '<div style="background:linear-gradient(135deg,rgba(0,212,170,.08),rgba(99,102,241,.08));border:1px solid rgba(0,212,170,.2);border-radius:14px;padding:16px;margin-bottom:14px">'
+    + '<div style="font-size:.68rem;color:var(--muted2);font-weight:700;letter-spacing:.5px;margin-bottom:5px">YOUR REFERRAL CODE</div>'
+    + '<div style="font-family:var(--font-head);font-size:1.4rem;font-weight:900;color:var(--rtai);letter-spacing:2px;margin-bottom:12px">'+refCode+'</div>'
+    + '<div style="font-size:.68rem;color:var(--muted2);font-weight:700;letter-spacing:.5px;margin-bottom:6px">YOUR REFERRAL LINK</div>'
     + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
     + '<input readonly value="'+refLink+'" id="ref-link-input" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--cyan);font-size:.72rem;font-family:monospace">'
     + '<button onclick="copyRefLink()" style="padding:8px 14px;background:var(--rtai);border:none;border-radius:8px;color:#000;font-weight:700;font-size:.75rem;cursor:pointer;white-space:nowrap">📋 Copy</button>'
     + '<button onclick="shareRefLink()" style="padding:8px 14px;background:#25d366;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.75rem;cursor:pointer;white-space:nowrap">📲 WhatsApp</button>'
     + '</div></div>'
 
-    // Stats
     + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px">'
     + [
-        ['Total Referred', refUsers.length, 'var(--cyan)'],
-        ['Active Users', refUsers.filter(function(u){return (u.txns||[]).length>0;}).length, 'var(--green)'],
-        ['Network Wallet','₹'+fmtS(refUsers.reduce(function(s,u){return s+(u.wallet||0);},0)),'var(--rtai)'],
+        ['Via Link',     refUsers.length,                                                          'var(--cyan)'],
+        ['Active',       refUsers.filter(function(u){return (u.txns||[]).length>0;}).length,       'var(--green)'],
+        ['Network Wallet','₹'+fmtS(refUsers.reduce(function(s,u){return s+(u.wallet||0);},0)),     'var(--rtai)'],
       ].map(function(s){
         return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">'
           + '<div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:'+s[2]+'">'+s[1]+'</div>'
@@ -8464,7 +8530,7 @@ function renderReferral(){
 
     + manualHTML
 
-    + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:10px">👥 Referred Members</div>'
+    + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:10px">👥 Members via Referral Link</div>'
     + refListHTML;
 }
 
@@ -8482,64 +8548,59 @@ function copyRefLink(){
 function shareRefLink(){
   var inp = document.getElementById('ref-link-input');
   if(!inp) return;
-  var text = '🏦 Join BankMe — India\'s trusted financial services platform!\n\nUse my referral link to register:\n' + inp.value + '\n\nPowered by PayPe Technologies 🚀';
+  var text = '🏦 Join BankMe - India is most trusted financial services platform!\n\nRegister using my referral link:\n' + inp.value + '\n\nPowered by PayPe Technologies 🚀';
   window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
 }
 
-function addReferralCustomer(){
+function addNetworkMember(){
   var name   = (document.getElementById('ref-name')  ||{}).value.trim();
   var mobile = (document.getElementById('ref-mobile')||{}).value.trim();
   var email  = (document.getElementById('ref-email') ||{}).value.trim();
   var role   = (document.getElementById('ref-role')  ||{}).value;
 
-  if(!name)  { toast('Enter customer name','e'); return; }
-  if(!mobile||mobile.length!==10||!/^[6-9]/.test(mobile)){ toast('Enter valid 10-digit mobile','e'); return; }
+  if(!name)  { toast('Enter full name','e'); return; }
+  if(!mobile || mobile.length!==10 || !/^[6-9]/.test(mobile)){ toast('Enter valid 10-digit mobile','e'); return; }
+
+  // Strict hierarchy — NO customers allowed via manual add
+  var allowed = { superdist:['distributor','retailer'], distributor:['retailer'] };
+  if(!(allowed[CU.role]||[]).includes(role)){
+    toast('You can only add ' + (CU.role==='superdist'?'Distributors or Retailers':'Retailers') + ' manually','e');
+    return;
+  }
 
   var refCode = 'REF-' + (CU.uid||'').slice(-6).toUpperCase() + '-' + CU.role.slice(0,3).toUpperCase();
   var newUser = {
-    id: genId(), uid: genId(),
-    name: name.toUpperCase(),
-    phone: mobile,
-    email: email,
-    role: role,
-    wallet: 0,
-    joined: nowStr(),
-    txns: [],
-    kyc: 'pending',
-    referredBy: refCode,
-    addedBy: CU.uid,
-    addedByName: CU.name,
-    commissionEarned: 0,
-    rtaiScore: 0,
-    riskLevel: 'Low'
+    id:genId(), uid:genId(),
+    name:name, phone:mobile, email:email,
+    role:role, wallet:0, joined:nowStr(),
+    txns:[], kyc:'pending',
+    referredBy:refCode, addedBy:CU.uid, addedByName:CU.name,
+    addedManually:true,
+    commissionEarned:0, rtaiScore:0, riskLevel:'Low'
   };
 
   if(db){
     db.collection('bankme_users').add(newUser)
     .then(function(ref){
       newUser.uid = ref.id;
-      if(!window._networkUsers) window._networkUsers = [];
+      if(!window._networkUsers) window._networkUsers=[];
       window._networkUsers.push(newUser);
-      addNotification('➕ '+name+' added to your network as '+role,'success','👤');
-      toast('✅ '+name+' added to your network!','s');
-      // Clear form
-      ['ref-name','ref-mobile','ref-email'].forEach(function(id){
-        var el=document.getElementById(id); if(el) el.value='';
-      });
+      addNotification('➕ '+name+' added as '+role,'success','👤');
+      toast('✅ '+name+' added as '+role+'!','s');
+      ['ref-name','ref-mobile','ref-email'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
       renderReferral();
     })
     .catch(function(){
-      // Even if Firestore fails, add locally
-      if(!window._networkUsers) window._networkUsers = [];
+      if(!window._networkUsers) window._networkUsers=[];
       window._networkUsers.push(newUser);
-      addNotification('➕ '+name+' added locally as '+role,'info','👤');
-      toast('✅ '+name+' added (offline mode)','s');
+      addNotification('➕ '+name+' added locally','info','👤');
+      toast('✅ '+name+' added (offline)','s');
       renderReferral();
     });
   } else {
-    if(!window._networkUsers) window._networkUsers = [];
+    if(!window._networkUsers) window._networkUsers=[];
     window._networkUsers.push(newUser);
-    addNotification('➕ '+name+' added to your network','info','👤');
+    addNotification('➕ '+name+' added to network','info','👤');
     toast('✅ '+name+' added!','s');
     renderReferral();
   }
@@ -8547,9 +8608,9 @@ function addReferralCustomer(){
 
 // Handle referral code from URL on app load
 (function checkRefCodeOnLoad(){
-  var hash = window.location.search;
-  if(hash && hash.indexOf('ref=')>=0){
-    var refCode = hash.split('ref=')[1].split('&')[0];
+  var search = window.location.search;
+  if(search && search.indexOf('ref=')>=0){
+    var refCode = search.split('ref=')[1].split('&')[0];
     if(refCode) window._incomingRefCode = refCode;
   }
 })();
@@ -8610,13 +8671,472 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 // ══════════════════════════════════════
-// goPage hook for dynamic pages
+// CASH IN SERVICE
 // ══════════════════════════════════════
+var CASHIN_PROVIDERS = [
+  {id:'sbi',    name:'State Bank of India',  icon:'🏛️', color:'#1e40af'},
+  {id:'hdfc',   name:'HDFC Bank',            icon:'🏦', color:'#004c8c'},
+  {id:'axis',   name:'Axis Bank',            icon:'🔴', color:'#dc2626'},
+  {id:'icici',  name:'ICICI Bank',           icon:'🟠', color:'#f97316'},
+  {id:'fino',   name:'Fino Payments Bank',   icon:'💼', color:'#7c3aed'},
+  {id:'paytm',  name:'Paytm Payments Bank',  icon:'💠', color:'#00b9f5'},
+  {id:'airtel', name:'Airtel Payments Bank', icon:'📡', color:'#ef4444'},
+  {id:'india',  name:'India Post Payments',  icon:'📮', color:'#dc2626'},
+];
+
+function initCashIn(){
+  var root = document.getElementById('cashin-root');
+  if(!root) return;
+  var tabs = '<div style="font-size:.8rem;font-weight:600;color:var(--muted2);margin-bottom:10px">Select Bank / Provider</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">'
+    + CASHIN_PROVIDERS.map(function(p){
+        return '<div onclick="selectCashInProvider(\''+p.id+'\',\''+p.name+'\')" id="cip_'+p.id+'" style="background:var(--bg3);border:2px solid var(--border);border-radius:10px;padding:10px;cursor:pointer;text-align:center;transition:all .2s">'
+          + '<div style="font-size:1.4rem">'+p.icon+'</div>'
+          + '<div style="font-size:.72rem;font-weight:600;color:var(--text);margin-top:4px">'+p.name+'</div>'
+          + '</div>';
+      }).join('')
+    + '</div><div id="cashin-form" style="display:none"></div>';
+  root.innerHTML = tabs;
+}
+
+function selectCashInProvider(id, name){
+  document.querySelectorAll('[id^="cip_"]').forEach(function(el){ el.style.borderColor='var(--border)'; });
+  var sel = document.getElementById('cip_'+id);
+  if(sel) sel.style.borderColor='var(--rtai)';
+  var form = document.getElementById('cashin-form');
+  if(!form) return;
+  form.style.display='block';
+  form.innerHTML = '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">'
+    + '<div style="font-size:.72rem;font-weight:700;color:var(--rtai)">'+name+'</div></div>'
+    + '<label class="flabel">Customer Mobile / Account No.</label>'
+    + '<input class="finp" id="ci-mobile" placeholder="10-digit mobile or account number"/>'
+    + '<label class="flabel">Customer Name</label>'
+    + '<input class="finp" id="ci-name" placeholder="Account holder name"/>'
+    + '<label class="flabel">Deposit Amount (₹)</label>'
+    + '<input class="finp" type="number" id="ci-amount" placeholder="Enter amount"/>'
+    + '<label class="flabel">Remarks (Optional)</label>'
+    + '<input class="finp" id="ci-remarks" placeholder="Purpose of deposit"/>'
+    + '<button onclick="processCashIn(\''+id+'\',\''+name+'\')" class="btn-primary" style="margin-top:4px">💵 Deposit Cash →</button>';
+}
+
+function processCashIn(pid, pname){
+  var mobile = (document.getElementById('ci-mobile')||{}).value.trim();
+  var name   = (document.getElementById('ci-name')||{}).value.trim();
+  var amount = parseFloat((document.getElementById('ci-amount')||{}).value||0);
+  var remarks= (document.getElementById('ci-remarks')||{}).value.trim();
+  if(!mobile||!name||!amount){ toast('Fill all required fields','e'); return; }
+  var txnId = genId();
+  var txn = {id:txnId,txnId:txnId,service:'cashin',subService:pname,title:'Cash In — '+pname,
+    amount:amount,type:'credit',status:'success',date:new Date().toLocaleDateString('en-IN'),
+    customerName:name,customerMobile:mobile,remarks:remarks,rtaiVerified:true};
+  TXN_HISTORY.unshift(txn);
+  CU.wallet = (CU.wallet||0) + amount;
+  document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet);
+  addNotification('💵 Cash In ₹'+fmtN(amount)+' via '+pname,'success','💵');
+  toast('✅ Cash deposited: ₹'+fmtN(amount),'s');
+  document.getElementById('svc-modal').classList.remove('show');
+  setTimeout(function(){ showInvoice(txnId); }, 300);
+}
+
+// ══════════════════════════════════════
+// CASH OUT SERVICE
+// ══════════════════════════════════════
+function initCashOut(){
+  var root = document.getElementById('cashout-root');
+  if(!root) return;
+  root.innerHTML = '<div style="font-size:.8rem;font-weight:600;color:var(--muted2);margin-bottom:10px">Select Bank / Provider</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">'
+    + CASHIN_PROVIDERS.map(function(p){
+        return '<div onclick="selectCashOutProvider(\''+p.id+'\',\''+p.name+'\')" id="cop_'+p.id+'" style="background:var(--bg3);border:2px solid var(--border);border-radius:10px;padding:10px;cursor:pointer;text-align:center;transition:all .2s">'
+          + '<div style="font-size:1.4rem">'+p.icon+'</div>'
+          + '<div style="font-size:.72rem;font-weight:600;color:var(--text);margin-top:4px">'+p.name+'</div>'
+          + '</div>';
+      }).join('')
+    + '</div><div id="cashout-form" style="display:none"></div>';
+}
+
+function selectCashOutProvider(id, name){
+  document.querySelectorAll('[id^="cop_"]').forEach(function(el){ el.style.borderColor='var(--border)'; });
+  var sel = document.getElementById('cop_'+id); if(sel) sel.style.borderColor='var(--rtai)';
+  var form = document.getElementById('cashout-form');
+  if(!form) return;
+  form.style.display='block';
+  form.innerHTML = '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">'
+    + '<div style="font-size:.72rem;font-weight:700;color:var(--rtai)">'+name+'</div></div>'
+    + '<label class="flabel">Account Number / Mobile</label>'
+    + '<input class="finp" id="co-account" placeholder="Account or mobile number"/>'
+    + '<label class="flabel">Account Holder Name</label>'
+    + '<input class="finp" id="co-name" placeholder="Name on account"/>'
+    + '<label class="flabel">IFSC Code</label>'
+    + '<input class="finp" id="co-ifsc" placeholder="e.g. SBIN0001234" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+    + '<label class="flabel">Withdrawal Amount (₹)</label>'
+    + '<input class="finp" type="number" id="co-amount" placeholder="Enter amount"/>'
+    + '<label class="flabel">Reason</label>'
+    + '<select class="fsel" id="co-reason"><option>Personal Withdrawal</option><option>Business Expense</option><option>Emergency</option><option>Others</option></select>'
+    + '<button onclick="processCashOut(\''+id+'\',\''+name+'\')" class="btn-primary" style="margin-top:4px">💴 Withdraw Cash →</button>';
+}
+
+function processCashOut(pid, pname){
+  var account= (document.getElementById('co-account')||{}).value.trim();
+  var name   = (document.getElementById('co-name')||{}).value.trim();
+  var amount = parseFloat((document.getElementById('co-amount')||{}).value||0);
+  if(!account||!name||!amount){ toast('Fill all required fields','e'); return; }
+  if((CU.wallet||0) < amount){ toast('Insufficient wallet balance','e'); return; }
+  var txnId = genId();
+  var txn = {id:txnId,txnId:txnId,service:'cashout',subService:pname,title:'Cash Out — '+pname,
+    amount:amount,type:'debit',status:'success',date:new Date().toLocaleDateString('en-IN'),
+    customerName:name,accountNo:account,rtaiVerified:true};
+  TXN_HISTORY.unshift(txn);
+  CU.wallet = (CU.wallet||0) - amount;
+  document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet);
+  addNotification('💴 Cash Out ₹'+fmtN(amount)+' via '+pname,'success','💴');
+  toast('✅ Cash withdrawn: ₹'+fmtN(amount),'s');
+  document.getElementById('svc-modal').classList.remove('show');
+  setTimeout(function(){ showInvoice(txnId); }, 300);
+}
+
+// ══════════════════════════════════════
+// CREDIT CARD SERVICE
+// ══════════════════════════════════════
+var CC_PROVIDERS = [
+  // Indian Banks
+  {id:'hdfc_cc',   name:'HDFC Credit Card',         icon:'🏦', color:'#004c8c', type:'National'},
+  {id:'sbi_cc',    name:'SBI Card',                  icon:'🏛️', color:'#1e40af', type:'National'},
+  {id:'icici_cc',  name:'ICICI Bank Credit Card',    icon:'🟠', color:'#f97316', type:'National'},
+  {id:'axis_cc',   name:'Axis Bank Credit Card',     icon:'🔴', color:'#dc2626', type:'National'},
+  {id:'kotak_cc',  name:'Kotak Mahindra Credit Card',icon:'🟡', color:'#eab308', type:'National'},
+  {id:'idfc_cc',   name:'IDFC First Bank Credit Card',icon:'🟢',color:'#16a34a', type:'National'},
+  {id:'bob_cc',    name:'Bank of Baroda Credit Card', icon:'🔵', color:'#2563eb', type:'National'},
+  {id:'indus_cc',  name:'IndusInd Bank Credit Card',  icon:'🟣', color:'#7c3aed', type:'National'},
+  {id:'yes_cc',    name:'Yes Bank Credit Card',        icon:'💚', color:'#059669', type:'National'},
+  {id:'rbl_cc',    name:'RBL Bank Credit Card',        icon:'🔶', color:'#d97706', type:'National'},
+  // International
+  {id:'visa',      name:'Visa Card',                  icon:'💳', color:'#1a1f71', type:'International'},
+  {id:'mastercard',name:'Mastercard',                 icon:'🔴', color:'#eb001b', type:'International'},
+  {id:'amex',      name:'American Express',           icon:'💠', color:'#007bc1', type:'International'},
+  {id:'rupay',     name:'RuPay Card',                 icon:'🇮🇳', color:'#ff6600', type:'National'},
+  {id:'diners',    name:'Diners Club',                icon:'🔷', color:'#004b87', type:'International'},
+  {id:'discover',  name:'Discover Card',              icon:'🟠', color:'#f97316', type:'International'},
+  // Fintech
+  {id:'slice',     name:'Slice Credit Card',          icon:'✂️', color:'#8b5cf6', type:'Fintech'},
+  {id:'onecard',   name:'OneCard',                    icon:'1️⃣', color:'#000000', type:'Fintech'},
+  {id:'fibe',      name:'Fibe (EarlySalary)',          icon:'💜', color:'#7c3aed', type:'Fintech'},
+  {id:'kreditbee', name:'KreditBee Card',              icon:'🐝', color:'#f59e0b', type:'Fintech'},
+  // International Payment
+  {id:'paypal',    name:'PayPal',                     icon:'🅿️', color:'#003087', type:'International'},
+  {id:'stripe',    name:'Stripe',                     icon:'⚡', color:'#635bff', type:'International'},
+];
+
+function initCreditCard(){
+  var root = document.getElementById('creditcard-root');
+  if(!root) return;
+
+  var grouped = {};
+  CC_PROVIDERS.forEach(function(p){ if(!grouped[p.type]) grouped[p.type]=[]; grouped[p.type].push(p); });
+
+  var typeColors = {National:'#1e40af',International:'#7c3aed',Fintech:'#059669'};
+  var html = '<div style="font-size:.8rem;font-weight:600;color:var(--muted2);margin-bottom:10px">Select Card Network / Bank</div>';
+
+  Object.keys(grouped).forEach(function(type){
+    html += '<div style="font-size:.68rem;font-weight:700;color:'+typeColors[type]+';text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:10px">'+type+'</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px">'
+      + grouped[type].map(function(p){
+          return '<div onclick="selectCCProvider(\''+p.id+'\',\''+p.name+'\')" id="ccp_'+p.id+'" style="background:var(--bg3);border:2px solid var(--border);border-radius:10px;padding:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .2s">'
+            + '<div style="font-size:1.3rem">'+p.icon+'</div>'
+            + '<div style="font-size:.7rem;font-weight:600;color:var(--text)">'+p.name+'</div>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  });
+
+  html += '<div id="cc-form" style="display:none"></div>';
+  root.innerHTML = html;
+}
+
+function selectCCProvider(id, name){
+  document.querySelectorAll('[id^="ccp_"]').forEach(function(el){ el.style.borderColor='var(--border)'; });
+  var sel = document.getElementById('ccp_'+id); if(sel) sel.style.borderColor='var(--rtai)';
+  var form = document.getElementById('cc-form');
+  if(!form) return;
+  form.style.display='block';
+  form.innerHTML = '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+    + '<div style="font-size:1.2rem">💳</div>'
+    + '<div><div style="font-size:.8rem;font-weight:700;color:var(--text)">'+name+'</div>'
+    + '<div style="font-size:.65rem;color:var(--muted2)">Credit Card Issuance / Service</div></div></div>'
+    + '<label class="flabel">Service Type</label>'
+    + '<select class="fsel" id="cc-svctype" onchange="updateCCForm(\''+id+'\',\''+name+'\')">'
+    + '<option value="issuance">New Card Issuance</option>'
+    + '<option value="payment">Card Bill Payment</option>'
+    + '<option value="upgrade">Card Upgrade</option>'
+    + '<option value="block">Block / Replace Card</option>'
+    + '</select>'
+    + '<div id="cc-dynamic-form"></div>';
+  updateCCForm(id, name);
+}
+
+function updateCCForm(id, name){
+  var svcType = (document.getElementById('cc-svctype')||{}).value || 'issuance';
+  var dynForm = document.getElementById('cc-dynamic-form');
+  if(!dynForm) return;
+
+  if(svcType === 'issuance'){
+    dynForm.innerHTML = '<label class="flabel">Full Name (as on Aadhaar / PAN)</label>'
+      + '<input class="finp" id="cc-name" placeholder="FULL NAME IN CAPITALS" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+      + '<label class="flabel">Mobile Number</label>'
+      + '<input class="finp" id="cc-mobile" placeholder="10-digit mobile" maxlength="10"/>'
+      + '<label class="flabel">PAN Number</label>'
+      + '<input class="finp" id="cc-pan" placeholder="e.g. ABCDE1234F" maxlength="10" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+      + '<label class="flabel">Annual Income</label>'
+      + '<select class="fsel" id="cc-income"><option>Below ₹3 Lakh</option><option>₹3–5 Lakh</option><option>₹5–10 Lakh</option><option>₹10–25 Lakh</option><option>Above ₹25 Lakh</option></select>'
+      + '<label class="flabel">Employment Type</label>'
+      + '<select class="fsel" id="cc-emp"><option>Salaried</option><option>Self Employed</option><option>Business Owner</option></select>'
+      + '<label class="flabel">Card Variant</label>'
+      + '<select class="fsel" id="cc-variant"><option>Classic</option><option>Gold</option><option>Platinum</option><option>Signature</option><option>Infinite</option></select>'
+      + '<button onclick="processCreditCard(\''+id+'\',\''+name+'\',\'issuance\')" class="btn-primary" style="margin-top:4px">💳 Apply for Credit Card →</button>';
+  } else if(svcType === 'payment'){
+    dynForm.innerHTML = '<label class="flabel">Card Number (Last 4 digits)</label>'
+      + '<input class="finp" id="cc-cardno" placeholder="xxxx xxxx xxxx XXXX" maxlength="19"/>'
+      + '<label class="flabel">Registered Mobile</label>'
+      + '<input class="finp" id="cc-mobile" placeholder="10-digit mobile"/>'
+      + '<label class="flabel">Payment Amount (₹)</label>'
+      + '<input class="finp" type="number" id="cc-amount" placeholder="Enter amount"/>'
+      + '<label class="flabel">Payment Type</label>'
+      + '<select class="fsel" id="cc-paytype"><option>Minimum Due</option><option>Total Outstanding</option><option>Custom Amount</option></select>'
+      + '<button onclick="processCreditCard(\''+id+'\',\''+name+'\',\'payment\')" class="btn-primary" style="margin-top:4px">💳 Pay Card Bill →</button>';
+  } else {
+    dynForm.innerHTML = '<label class="flabel">Card Number (Last 4 digits)</label>'
+      + '<input class="finp" id="cc-cardno" placeholder="xxxx xxxx xxxx XXXX"/>'
+      + '<label class="flabel">Registered Mobile</label>'
+      + '<input class="finp" id="cc-mobile" placeholder="10-digit mobile"/>'
+      + '<label class="flabel">Request Details</label>'
+      + '<input class="finp" id="cc-details" placeholder="Describe your request"/>'
+      + '<button onclick="processCreditCard(\''+id+'\',\''+name+'\',\''+svcType+'\')" class="btn-primary" style="margin-top:4px">💳 Submit Request →</button>';
+  }
+}
+
+function processCreditCard(pid, pname, svcType){
+  var mobile = (document.getElementById('cc-mobile')||{}).value.trim();
+  var name   = (document.getElementById('cc-name')||document.getElementById('cc-cardno')||{}).value.trim();
+  var amount = parseFloat((document.getElementById('cc-amount')||{}).value||0);
+  if(!mobile){ toast('Enter mobile number','e'); return; }
+  var txnId = genId();
+  var title = svcType==='issuance' ? 'CC Issuance — '+pname : svcType==='payment' ? 'CC Payment — '+pname : 'CC Request — '+pname;
+  var txn = {id:txnId,txnId:txnId,service:'creditcard',subService:pname+'_'+svcType,
+    title:title,amount:amount||0,type:'debit',status:'success',
+    date:new Date().toLocaleDateString('en-IN'),rtaiVerified:true};
+  TXN_HISTORY.unshift(txn);
+  if(amount && svcType==='payment'){ CU.wallet=(CU.wallet||0)-amount; document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet); }
+  addNotification('💳 '+title,'success','💳');
+  toast('✅ '+title+' submitted!','s');
+  document.getElementById('svc-modal').classList.remove('show');
+  if(amount) setTimeout(function(){ showInvoice(txnId); }, 300);
+}
+
+// ══════════════════════════════════════
+// CMS — CASH MANAGEMENT SERVICES
+// ══════════════════════════════════════
+var CMS_PROVIDERS = [
+  {id:'sbi_cms',   name:'SBI CMS',            icon:'🏛️', color:'#1e40af'},
+  {id:'hdfc_cms',  name:'HDFC Bank CMS',       icon:'🏦', color:'#004c8c'},
+  {id:'icici_cms', name:'ICICI Bank CMS',      icon:'🟠', color:'#f97316'},
+  {id:'axis_cms',  name:'Axis Bank CMS',       icon:'🔴', color:'#dc2626'},
+  {id:'brinks',    name:'Brinks India',         icon:'🔒', color:'#7c3aed'},
+  {id:'cms_info',  name:'CMS Info Systems',    icon:'💼', color:'#0ea5e9'},
+  {id:'hitachi',   name:'Hitachi Payment Svcs',icon:'⚙️', color:'#374151'},
+  {id:'fis',       name:'FIS Global',           icon:'🌐', color:'#059669'},
+  {id:'euronet',   name:'Euronet Worldwide',    icon:'🌍', color:'#2563eb'},
+  {id:'ncr',       name:'NCR Corporation',      icon:'🖥️', color:'#1e40af'},
+];
+
+function initCMS(){
+  var root = document.getElementById('cms-root');
+  if(!root) return;
+  root.innerHTML = '<div style="font-size:.8rem;font-weight:600;color:var(--muted2);margin-bottom:10px">Select CMS Provider / Bank</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:14px">'
+    + CMS_PROVIDERS.map(function(p){
+        return '<div onclick="selectCMSProvider(\''+p.id+'\',\''+p.name+'\')" id="cmsp_'+p.id+'" style="background:var(--bg3);border:2px solid var(--border);border-radius:10px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .2s">'
+          + '<div style="font-size:1.3rem">'+p.icon+'</div>'
+          + '<div style="font-size:.7rem;font-weight:600;color:var(--text)">'+p.name+'</div>'
+          + '</div>';
+      }).join('')
+    + '</div><div id="cms-form" style="display:none"></div>';
+}
+
+function selectCMSProvider(id, name){
+  document.querySelectorAll('[id^="cmsp_"]').forEach(function(el){ el.style.borderColor='var(--border)'; });
+  var sel = document.getElementById('cmsp_'+id); if(sel) sel.style.borderColor='var(--rtai)';
+  var form = document.getElementById('cms-form');
+  if(!form) return;
+  form.style.display='block';
+  form.innerHTML = '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">'
+    + '<div style="font-size:.72rem;font-weight:700;color:var(--rtai)">'+name+'</div>'
+    + '<div style="font-size:.65rem;color:var(--muted2)">Cash Management Service</div></div>'
+    + '<label class="flabel">Service Type</label>'
+    + '<select class="fsel" id="cms-type"><option>Cash Pickup</option><option>Cash Delivery</option><option>ATM Cash Replenishment</option><option>Vault Management</option><option>Cash in Transit (CIT)</option><option>White Label ATM</option></select>'
+    + '<label class="flabel">Business / Merchant Name</label>'
+    + '<input class="finp" id="cms-biz" placeholder="Your business name"/>'
+    + '<label class="flabel">Contact Mobile</label>'
+    + '<input class="finp" id="cms-mobile" placeholder="10-digit mobile"/>'
+    + '<label class="flabel">Cash Amount (₹)</label>'
+    + '<input class="finp" type="number" id="cms-amount" placeholder="Enter amount"/>'
+    + '<label class="flabel">Service Address</label>'
+    + '<input class="finp" id="cms-address" placeholder="Pickup / delivery address"/>'
+    + '<label class="flabel">Schedule Date</label>'
+    + '<input class="finp" type="date" id="cms-date"/>'
+    + '<button onclick="processCMS(\''+id+'\',\''+name+'\')" class="btn-primary" style="margin-top:4px">🏧 Submit CMS Request →</button>';
+}
+
+function processCMS(pid, pname){
+  var biz    = (document.getElementById('cms-biz')||{}).value.trim();
+  var mobile = (document.getElementById('cms-mobile')||{}).value.trim();
+  var amount = parseFloat((document.getElementById('cms-amount')||{}).value||0);
+  var type   = (document.getElementById('cms-type')||{}).value||'Cash Pickup';
+  if(!biz||!mobile){ toast('Fill required fields','e'); return; }
+  var txnId = genId();
+  var txn = {id:txnId,txnId:txnId,service:'cms',subService:type,
+    title:'CMS '+type+' — '+pname,amount:amount,type:'debit',status:'pending',
+    date:new Date().toLocaleDateString('en-IN'),businessName:biz,rtaiVerified:true};
+  TXN_HISTORY.unshift(txn);
+  addNotification('🏧 CMS '+type+' request via '+pname,'info','🏧');
+  toast('✅ CMS request submitted to '+pname,'s');
+  document.getElementById('svc-modal').classList.remove('show');
+  setTimeout(function(){ showInvoice(txnId); }, 300);
+}
+
+// ══════════════════════════════════════
+// API KEYS — MULTI-VENDOR PER SERVICE
+// ══════════════════════════════════════
+var MULTI_VENDOR_SERVICES = [
+  {
+    id:'mv_payment', label:'💳 Payment Gateway — Multi Vendor', color:'#f59e0b',
+    vendors:[
+      {id:'razorpay',   name:'Razorpay',    keys:[{id:'rz_key',label:'Key ID',type:'text'},{id:'rz_secret',label:'Secret Key',type:'password'},{id:'rz_webhook',label:'Webhook Secret',type:'password'}]},
+      {id:'cashfree',   name:'Cashfree',    keys:[{id:'cf_appid',label:'App ID',type:'text'},{id:'cf_secret',label:'Secret Key',type:'password'}]},
+      {id:'payu',       name:'PayU',        keys:[{id:'pu_key',label:'Merchant Key',type:'text'},{id:'pu_salt',label:'Merchant Salt',type:'password'}]},
+      {id:'paytm_pg',   name:'Paytm PG',   keys:[{id:'pt_mid',label:'Merchant ID',type:'text'},{id:'pt_key',label:'Merchant Key',type:'password'}]},
+      {id:'stripe',     name:'Stripe',      keys:[{id:'stripe_pub',label:'Publishable Key',type:'text'},{id:'stripe_secret',label:'Secret Key',type:'password'},{id:'stripe_webhook',label:'Webhook Secret',type:'password'}]},
+      {id:'paypal',     name:'PayPal',      keys:[{id:'pp_client',label:'Client ID',type:'text'},{id:'pp_secret',label:'Client Secret',type:'password'},{id:'pp_mode',label:'Mode (sandbox/live)',type:'text'}]},
+    ]
+  },
+  {
+    id:'mv_aeps', label:'👆 AEPS — Multi Vendor', color:'#10b981',
+    vendors:[
+      {id:'ybl_aeps',   name:'Yes Bank (YBL)',  keys:[{id:'ybl_key',label:'API Key',type:'password'},{id:'ybl_mid',label:'Merchant ID',type:'text'},{id:'ybl_secret',label:'Secret',type:'password'}]},
+      {id:'sbi_aeps',   name:'SBI AEPS',        keys:[{id:'sbi_key',label:'API Key',type:'password'},{id:'sbi_mid',label:'Agent ID',type:'text'}]},
+      {id:'fino_aeps',  name:'Fino AEPS',       keys:[{id:'fino_key',label:'API Key',type:'password'},{id:'fino_mid',label:'Merchant Code',type:'text'}]},
+      {id:'pay_aeps',   name:'PayNearby AEPS',  keys:[{id:'pnb_key',label:'API Key',type:'password'},{id:'pnb_mid',label:'Partner ID',type:'text'}]},
+    ]
+  },
+  {
+    id:'mv_dmt', label:'💸 DMT — Multi Vendor', color:'#3b82f6',
+    vendors:[
+      {id:'eko_dmt',    name:'Eko India',       keys:[{id:'eko_key',label:'Developer Key',type:'password'},{id:'eko_mid',label:'Partner ID',type:'text'}]},
+      {id:'fino_dmt',   name:'Fino Payments',   keys:[{id:'finod_key',label:'API Key',type:'password'},{id:'finod_mid',label:'Merchant ID',type:'text'}]},
+      {id:'rbl_dmt',    name:'RBL Bank DMT',    keys:[{id:'rbl_key',label:'API Key',type:'password'},{id:'rbl_mid',label:'Agent Code',type:'text'}]},
+      {id:'nsdl_dmt',   name:'NSDL DMT',        keys:[{id:'nsdl_key',label:'API Key',type:'password'},{id:'nsdl_mid',label:'Partner ID',type:'text'}]},
+    ]
+  },
+  {
+    id:'mv_cms', label:'🏧 CMS — Multi Vendor', color:'#0ea5e9',
+    vendors:[
+      {id:'cms_info_v', name:'CMS Info Systems',keys:[{id:'cms_key',label:'API Key',type:'password'},{id:'cms_mid',label:'Merchant ID',type:'text'},{id:'cms_secret',label:'Secret',type:'password'}]},
+      {id:'brinks_v',   name:'Brinks India',     keys:[{id:'brinks_key',label:'API Key',type:'password'},{id:'brinks_mid',label:'Client ID',type:'text'}]},
+      {id:'hitachi_v',  name:'Hitachi Payments', keys:[{id:'hit_key',label:'Partner Key',type:'password'},{id:'hit_mid',label:'Partner ID',type:'text'}]},
+    ]
+  },
+  {
+    id:'mv_upi', label:'📲 UPI — Multi Vendor', color:'#6366f1',
+    vendors:[
+      {id:'npci_upi',   name:'NPCI / UPI',       keys:[{id:'upi_mid',label:'Merchant ID',type:'text'},{id:'upi_vpa',label:'VPA / Handle',type:'text'},{id:'upi_key',label:'API Key',type:'password'}]},
+      {id:'gpay_upi',   name:'Google Pay',        keys:[{id:'gp_mid',label:'Merchant ID',type:'text'},{id:'gp_key',label:'API Key',type:'password'}]},
+      {id:'phonepe_upi',name:'PhonePe',           keys:[{id:'pp_mid',label:'Merchant ID',type:'text'},{id:'pp_salt',label:'Salt Key',type:'password'},{id:'pp_idx',label:'Salt Index',type:'text'}]},
+    ]
+  },
+];
+
+function renderMultiVendorKeys(){
+  var existing = document.getElementById('mv-keys-section');
+  if(existing) return; // already rendered
+
+  var el = document.getElementById('page-apikeys');
+  if(!el) return;
+
+  var mvHTML = '<div id="mv-keys-section" style="margin-top:20px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+    + '<div style="width:4px;height:20px;background:var(--rtai);border-radius:2px"></div>'
+    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700">🔀 Multi-Vendor API Keys</div>'
+    + '<span style="font-size:.65rem;background:var(--rtai)18;color:var(--rtai);padding:2px 8px;border-radius:100px;font-weight:700">One service → Multiple vendors</span>'
+    + '</div>'
+    + MULTI_VENDOR_SERVICES.map(function(svc){
+        return '<div style="background:var(--bg2);border:1px solid '+svc.color+'33;border-radius:14px;padding:16px;margin-bottom:12px">'
+          + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;color:'+svc.color+';margin-bottom:12px">'+svc.label+'</div>'
+          + '<div style="display:flex;flex-direction:column;gap:10px">'
+          + svc.vendors.map(function(v){
+              return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+                + '<div style="font-size:.8rem;font-weight:700;color:var(--text)">'+v.name+'</div>'
+                + '<div style="display:flex;gap:6px">'
+                + '<button onclick="saveMVKeys(\''+svc.id+'_'+v.id+'\')" style="padding:3px 10px;background:'+svc.color+';border:none;border-radius:6px;color:#000;font-weight:700;font-size:.65rem;cursor:pointer">Save</button>'
+                + '<button onclick="toggleMVVendor(\''+svc.id+'_'+v.id+'\')" id="mv_tog_'+svc.id+'_'+v.id+'" style="padding:3px 10px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:6px;color:#10b981;font-weight:700;font-size:.65rem;cursor:pointer">Active</button>'
+                + '</div></div>'
+                + v.keys.map(function(k){
+                    var saved = (_apiKeys[svc.id+'_'+v.id+'_'+k.id]||'');
+                    return '<div style="margin-bottom:7px"><div style="font-size:.65rem;color:var(--muted2);font-weight:600;margin-bottom:3px">'+k.label+'</div>'
+                      + '<div style="display:flex;gap:5px"><input type="'+k.type+'" id="mvk_'+svc.id+'_'+v.id+'_'+k.id+'" value="'+saved+'" placeholder="Enter '+k.label+'" '
+                      + 'style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:.72rem;font-family:monospace">'
+                      + '<button onclick="toggleMVKeyVis(\'mvk_'+svc.id+'_'+v.id+'_'+k.id+'\')" style="padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:7px;color:var(--muted2);font-size:.7rem;cursor:pointer">👁</button>'
+                      + '</div></div>';
+                  }).join('')
+                + '</div>';
+            }).join('')
+          + '</div></div>';
+      }).join('')
+    + '</div>';
+
+  el.insertAdjacentHTML('beforeend', mvHTML);
+}
+
+function toggleMVKeyVis(id){
+  var inp = document.getElementById(id);
+  if(inp) inp.type = inp.type==='password'?'text':'password';
+}
+
+function saveMVKeys(prefix){
+  MULTI_VENDOR_SERVICES.forEach(function(svc){
+    svc.vendors.forEach(function(v){
+      if((svc.id+'_'+v.id) !== prefix) return;
+      v.keys.forEach(function(k){
+        var inp = document.getElementById('mvk_'+prefix+'_'+k.id);
+        if(inp && inp.value.trim()) _apiKeys[prefix+'_'+k.id] = inp.value.trim();
+      });
+    });
+  });
+  saveApiKeysToDB();
+  toast('✅ '+prefix+' keys saved!','s');
+}
+
+function toggleMVVendor(prefix){
+  var btn = document.getElementById('mv_tog_'+prefix);
+  if(!btn) return;
+  var isActive = btn.textContent === 'Active';
+  btn.textContent = isActive ? 'Inactive' : 'Active';
+  btn.style.background = isActive ? 'rgba(239,68,68,.1)' : 'rgba(16,185,129,.1)';
+  btn.style.borderColor = isActive ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.3)';
+  btn.style.color = isActive ? '#f87171' : '#10b981';
+  _apiKeys[prefix+'_active'] = isActive ? '0' : '1';
+  saveApiKeysToDB();
+  toast((isActive?'⏸ Vendor deactivated':'✅ Vendor activated'),'s');
+}
+
+
 var _origGoPage = goPage;
 goPage = function(pg){
   _origGoPage(pg);
   if(pg === 'commission') renderCommission();
-  if(pg === 'apikeys')    renderApiKeys();
+  if(pg === 'apikeys'){
+    renderApiKeys();
+    setTimeout(renderMultiVendorKeys, 200);
+  }
   if(pg === 'dispute')    renderDispute();
   if(pg === 'referral')   renderReferral();
   if(pg === 'profile' && (CU && (CU.role==='whitelabel'||CU.role==='admin'))){
