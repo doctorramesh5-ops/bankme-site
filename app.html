@@ -16,6 +16,122 @@
   --rtai:#00d4aa;--rtai2:#0099ff;
   --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
 }
+
+/* ── LIGHT GLOBAL BANKING THEME ── */
+[data-theme="light"]{
+  --bg:#f0f4f8;--bg2:#ffffff;--bg3:#e8edf3;
+  --border:#d0dae6;--border2:#b8c8dc;
+  --text:#0a1628;--muted:#5a7090;--muted2:#7a90a8;
+  --blue:#1a56c4;--cyan:#0891b2;--green:#059669;
+  --gold:#d97706;--red:#dc2626;--purple:#7c3aed;
+  --rtai:#0066cc;--rtai2:#0044aa;
+}
+
+/* ── BLUE PROFESSIONAL THEME ── */
+[data-theme="blue"]{
+  --bg:#0a1628;--bg2:#0f2040;--bg3:#162a50;
+  --border:#1e3a6a;--border2:#2a5090;
+  --text:#e8f2ff;--muted:#4a72a0;--muted2:#6a92c0;
+  --blue:#3b82f6;--cyan:#38bdf8;--green:#34d399;
+  --gold:#fbbf24;--red:#f87171;--purple:#a78bfa;
+  --rtai:#60a5fa;--rtai2:#3b82f6;
+}
+
+/* ── GREEN FINANCE THEME ── */
+[data-theme="green"]{
+  --bg:#f5faf5;--bg2:#ffffff;--bg3:#eaf4ea;
+  --border:#c8dfc8;--border2:#a8cfa8;
+  --text:#0a2010;--muted:#507050;--muted2:#709070;
+  --blue:#1d6ab4;--cyan:#0e7490;--green:#166534;
+  --gold:#a16207;--red:#b91c1c;--purple:#6b21a8;
+  --rtai:#16a34a;--rtai2:#15803d;
+}
+
+/* ── GOLD PREMIUM THEME ── */
+[data-theme="gold"]{
+  --bg:#0d0a00;--bg2:#1a1400;--bg3:#241c00;
+  --border:#3a2c00;--border2:#4a3800;
+  --text:#fff8e6;--muted:#806040;--muted2:#a08060;
+  --blue:#f59e0b;--cyan:#fbbf24;--green:#10b981;
+  --gold:#f59e0b;--red:#ef4444;--purple:#a855f7;
+  --rtai:#f59e0b;--rtai2:#d97706;
+}
+
+/* Theme switcher button */
+.theme-btn{
+  width:30px;height:30px;border-radius:50%;border:2px solid var(--border2);
+  cursor:pointer;transition:transform .2s;flex-shrink:0;
+}
+.theme-btn:hover{ transform:scale(1.15); }
+.theme-btn.active{ border-color:var(--rtai);box-shadow:0 0 0 2px var(--rtai)44; }
+#theme-switcher{
+  display:flex;align-items:center;gap:6px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:100px;padding:4px 10px;
+}
+
+/* ── Light & Green theme overrides ── */
+[data-theme="light"] body,
+[data-theme="green"] body{
+  background:var(--bg);
+}
+[data-theme="light"] .topbar,
+[data-theme="green"] .topbar{
+  background:#fff;
+  border-bottom:1px solid var(--border);
+  box-shadow:0 1px 8px rgba(0,0,0,.06);
+}
+[data-theme="light"] .nb,
+[data-theme="green"] .nb{
+  color:var(--muted);
+}
+[data-theme="light"] .nb.on,
+[data-theme="green"] .nb.on{
+  background:var(--rtai)18;
+  color:var(--rtai);
+}
+[data-theme="light"] .auth-card,
+[data-theme="green"] .auth-card{
+  background:#fff;
+  box-shadow:0 8px 40px rgba(0,0,0,.08);
+}
+[data-theme="light"] .modal-box,
+[data-theme="green"] .modal-box{
+  background:#fff;
+  box-shadow:0 8px 40px rgba(0,0,0,.1);
+}
+[data-theme="light"] .page,
+[data-theme="green"] .page{
+  background:var(--bg);
+}
+[data-theme="light"] .svc-btn:hover,
+[data-theme="green"] .svc-btn:hover{
+  box-shadow:0 4px 16px rgba(0,0,0,.1);
+}
+[data-theme="light"] #toast,
+[data-theme="green"] #toast{
+  color:#fff;
+}
+[data-theme="light"] .stat-card,
+[data-theme="green"] .stat-card{
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+/* Blue theme overrides */
+[data-theme="blue"] .nb.on{
+  background:rgba(96,165,250,.15);
+  color:#60a5fa;
+}
+/* Gold theme overrides */
+[data-theme="gold"] .nb.on{
+  background:rgba(245,158,11,.15);
+  color:#f59e0b;
+}
+[data-theme="gold"] .rtai-badge{
+  background:rgba(245,158,11,.15);
+  border-color:rgba(245,158,11,.3);
+  color:#f59e0b;
+}
+
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden}
 button,input,select,textarea{font-family:var(--font-body)}
@@ -441,6 +557,7 @@ main{flex:1;overflow:auto}
       <button class="nb" id="nb-fraud" onclick="goPage('fraud')" style="display:none">🔍 Fraud Engine</button>
       <button class="nb" id="nb-reconcile" onclick="goPage('reconcile')" style="display:none">📒 Reconcile</button>
       <button class="nb" id="nb-dispute" onclick="goPage('dispute')" style="display:none">⚖️ Disputes</button>
+      <button class="nb" id="nb-referral" onclick="goPage('referral')" style="display:none">🔗 Referral</button>
       <button class="nb" id="nb-txnhistory" onclick="goPage('txnhistory')">📊 Transactions</button>
       <button class="nb" id="nb-commission" onclick="goPage('commission')" style="display:none">💹 Commission</button>
       <button class="nb" id="nb-apikeys" onclick="goPage('apikeys')" style="display:none">🔑 API Keys</button>
@@ -450,9 +567,33 @@ main{flex:1;overflow:auto}
     </div>
     <div class="tb-right">
       <span class="rtai-badge">RTAI ✓</span>
+      <div id="theme-switcher" title="Change Theme">
+        <span style="font-size:.6rem;color:var(--muted2);font-weight:600;white-space:nowrap">🎨</span>
+        <div class="theme-btn active" id="th-dark"  onclick="setTheme('dark')"  style="background:linear-gradient(135deg,#040810,#0d1520)" title="Dark"></div>
+        <div class="theme-btn"        id="th-light" onclick="setTheme('light')" style="background:linear-gradient(135deg,#f0f4f8,#ffffff)" title="Light Banking"></div>
+        <div class="theme-btn"        id="th-blue"  onclick="setTheme('blue')"  style="background:linear-gradient(135deg,#0a1628,#2a5090)" title="Blue Pro"></div>
+        <div class="theme-btn"        id="th-green" onclick="setTheme('green')" style="background:linear-gradient(135deg,#f5faf5,#16a34a)" title="Green Finance"></div>
+        <div class="theme-btn"        id="th-gold"  onclick="setTheme('gold')"  style="background:linear-gradient(135deg,#0d0a00,#f59e0b)" title="Gold Premium"></div>
+      </div>
       <span class="wallet-chip" id="wallet-chip">₹0.00</span>
+      <div id="bell-btn" onclick="toggleNotifications()" style="position:relative;cursor:pointer;width:34px;height:34px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">
+        🔔
+        <span id="bell-badge" style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:100px;font-size:.55rem;font-weight:700;padding:1px 4px;display:none">0</span>
+      </div>
       <div class="avatar" id="user-avatar">U</div>
     </div>
+  </div>
+
+  <!-- Notification Panel -->
+  <div id="notif-panel" style="display:none;position:fixed;top:56px;right:12px;width:320px;max-height:420px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.4);overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
+      <div style="font-family:var(--font-head);font-size:.88rem;font-weight:700">🔔 Notifications</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="markAllRead()" style="font-size:.65rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--muted2);cursor:pointer">Mark all read</button>
+        <button onclick="toggleNotifications()" style="font-size:.65rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--muted2);cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div id="notif-list" style="overflow-y:auto;max-height:360px;padding:8px"></div>
   </div>
 
   <main>
@@ -464,6 +605,7 @@ main{flex:1;overflow:auto}
 <div id="page-fraud" class="page" style="display:none"></div>
 <div id="page-reconcile" class="page" style="display:none"></div>
 <div id="page-dispute" class="page" style="display:none"></div>
+<div id="page-referral" class="page" style="display:none"></div>
     <div id="page-txnhistory" class="page" style="display:none"></div>
     <div id="page-commission" class="page" style="display:none"></div>
     <div id="page-apikeys" class="page" style="display:none"></div>
@@ -1625,7 +1767,8 @@ function showApp(){
   document.getElementById('nb-rtai').style.display=isAdminWL?'':'none';
     document.getElementById('nb-fraud').style.display = (role==='admin'||role==='whitelabel'||role==='superdist') ? '' : 'none';
     document.getElementById('nb-reconcile').style.display = (role==='admin'||role==='whitelabel') ? '' : 'none';
-  document.getElementById('nb-dispute').style.display = '';
+  document.getElementById('nb-dispute').style.display   = (role==='admin'||role==='whitelabel') ? '' : 'none';
+  document.getElementById('nb-referral').style.display  = (['superdist','distributor','retailer'].indexOf(role)>=0) ? '' : 'none';
   document.getElementById('nb-assign').style.display=isAdminWL?'':'none';
   document.getElementById('nb-txnhistory').style.display='';
   document.getElementById('nb-commission').style.display=isAdminWL?'':'none';
@@ -1640,7 +1783,7 @@ function showApp(){
 // NAVIGATION
 // ══════════════════════════════════════
 function goPage(pg){
-  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','dispute','txnhistory','commission','apikeys','chat','wallet','network','profile'].forEach(function(p){
+  ['dashboard','mynetwork','assign','services','rtai','fraud','reconcile','dispute','referral','txnhistory','commission','apikeys','chat','wallet','network','profile'].forEach(function(p){
     var el=document.getElementById('page-'+p);
     var nb=document.getElementById('nb-'+p);
     if(el) el.style.display=p===pg?(p==='chat'?'flex':'block'):'none';
@@ -8126,6 +8269,347 @@ function checkTxnStatus(txnId){
 }
 
 // ══════════════════════════════════════
+// NOTIFICATION SYSTEM
+// ══════════════════════════════════════
+var _notifications = [];
+
+function addNotification(msg, type, icon){
+  var n = {
+    id: Date.now(),
+    msg: msg,
+    type: type||'info',
+    icon: icon||'🔔',
+    time: nowStr(),
+    read: false
+  };
+  _notifications.unshift(n);
+  if(_notifications.length > 50) _notifications = _notifications.slice(0,50);
+  updateBellBadge();
+  // Save to localStorage
+  try{ localStorage.setItem('bankme_notifs', JSON.stringify(_notifications)); }catch(e){}
+  return n;
+}
+
+function updateBellBadge(){
+  var badge = document.getElementById('bell-badge');
+  if(!badge) return;
+  var unread = _notifications.filter(function(n){ return !n.read; }).length;
+  badge.textContent = unread > 99 ? '99+' : unread;
+  badge.style.display = unread > 0 ? '' : 'none';
+}
+
+function toggleNotifications(){
+  var panel = document.getElementById('notif-panel');
+  if(!panel) return;
+  var isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) renderNotifList();
+}
+
+function renderNotifList(){
+  var el = document.getElementById('notif-list');
+  if(!el) return;
+  if(!_notifications.length){
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:6px">🔕</div>No notifications yet</div>';
+    return;
+  }
+  var typeColors = {success:'#10b981',error:'#ef4444',warning:'#f59e0b',info:'#06b6d4',login:'#8b5cf6',logout:'#6b7280'};
+  el.innerHTML = _notifications.map(function(n){
+    var c = typeColors[n.type]||'#06b6d4';
+    return '<div onclick="markRead('+n.id+')" style="display:flex;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:4px;cursor:pointer;background:'+(n.read?'transparent':'var(--bg3)')+';border:1px solid '+(n.read?'transparent':'var(--border)')+'">'
+      + '<div style="font-size:1.1rem;flex-shrink:0">'+n.icon+'</div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:.78rem;color:var(--text);font-weight:'+(n.read?'400':'600')+'">'+n.msg+'</div>'
+      + '<div style="font-size:.65rem;color:var(--muted2);margin-top:2px">'+n.time+'</div>'
+      + '</div>'
+      + '<div style="width:6px;height:6px;border-radius:50%;background:'+c+';flex-shrink:0;margin-top:4px;opacity:'+(n.read?'0':'1')+'"></div>'
+      + '</div>';
+  }).join('');
+}
+
+function markRead(id){
+  _notifications.forEach(function(n){ if(n.id===id) n.read=true; });
+  updateBellBadge();
+  renderNotifList();
+  try{ localStorage.setItem('bankme_notifs', JSON.stringify(_notifications)); }catch(e){}
+}
+
+function markAllRead(){
+  _notifications.forEach(function(n){ n.read=true; });
+  updateBellBadge();
+  renderNotifList();
+  try{ localStorage.setItem('bankme_notifs', JSON.stringify(_notifications)); }catch(e){}
+}
+
+function loadNotifications(){
+  try{
+    var saved = JSON.parse(localStorage.getItem('bankme_notifs')||'[]');
+    _notifications = saved;
+    updateBellBadge();
+  }catch(e){}
+}
+
+// Close panel when clicking outside
+document.addEventListener('click', function(e){
+  var panel = document.getElementById('notif-panel');
+  var bell  = document.getElementById('bell-btn');
+  if(panel && bell && !panel.contains(e.target) && !bell.contains(e.target)){
+    panel.style.display = 'none';
+  }
+});
+
+// ── Hook into login/logout to log notifications ──
+var _origShowApp = showApp;
+showApp = function(){
+  _origShowApp();
+  loadNotifications();
+  addNotification('✅ Logged in as '+CU.name+' ('+CU.role+')', 'login', '🔐');
+  // Welcome notification
+  addNotification('Welcome back to BankMe! Your wallet: ₹'+fmtN(CU.wallet||0), 'info', '🏦');
+};
+
+var _origDoLogout = doLogout;
+doLogout = function(){
+  addNotification('👋 '+CU.name+' logged out', 'logout', '🚪');
+  _origDoLogout();
+};
+
+// ── Hook into transactions to send notifications ──
+function notifyTxn(title, amount, status){
+  var icon = status==='success'?'✅':status==='failed'?'❌':'⏳';
+  var type = status==='success'?'success':status==='failed'?'error':'warning';
+  addNotification(icon+' '+title+' — ₹'+fmtN(amount), type, icon);
+}
+
+// ══════════════════════════════════════
+// REFERRAL PAGE
+// (Super Distributor / Distributor / Retailer)
+// ══════════════════════════════════════
+function renderReferral(){
+  var el = document.getElementById('page-referral');
+  if(!el) return;
+
+  var baseUrl = 'https://bankme.co.in/app.html';
+  var refCode = 'REF-' + (CU.uid||'').slice(-6).toUpperCase() + '-' + CU.role.slice(0,3).toUpperCase();
+  var refLink = baseUrl + '?ref=' + refCode;
+
+  // Load referred users
+  var refUsers = (window._networkUsers||[]).filter(function(u){ return u.referredBy === refCode; });
+
+  // Manual add form
+  var manualHTML = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">'
+    + '<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:12px">➕ Manually Add Customer</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Full Name</div>'
+    + '<input type="text" id="ref-name" placeholder="Customer full name" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Mobile Number</div>'
+    + '<input type="tel" id="ref-mobile" placeholder="10-digit mobile" maxlength="10" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Email (Optional)</div>'
+    + '<input type="email" id="ref-email" placeholder="customer@email.com" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem;box-sizing:border-box"></div>'
+    + '<div><div style="font-size:.68rem;color:var(--muted2);font-weight:600;margin-bottom:3px">Role</div>'
+    + '<select id="ref-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.8rem">'
+    + (CU.role==='superdist' ? '<option value="distributor">Distributor</option><option value="retailer">Retailer</option>' : '')
+    + (CU.role==='distributor' ? '<option value="retailer">Retailer</option>' : '')
+    + '<option value="customer">Customer</option>'
+    + '</select></div>'
+    + '</div>'
+    + '<button onclick="addReferralCustomer()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;border-radius:10px;color:#000;font-weight:700;font-size:.85rem;cursor:pointer">➕ Add to My Network</button>'
+    + '</div>';
+
+  var refListHTML = refUsers.length
+    ? refUsers.map(function(u){
+        var rc = getRC(u.role);
+        return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+          + '<div style="display:flex;align-items:center;gap:10px">'
+          + '<div style="width:34px;height:34px;border-radius:50%;background:'+rc.color+'22;display:flex;align-items:center;justify-content:center;font-weight:700;color:'+rc.color+'">'+(u.name||'?')[0].toUpperCase()+'</div>'
+          + '<div><div style="font-size:.82rem;font-weight:600">'+u.name+'</div>'
+          + '<div style="font-size:.7rem;color:var(--muted2)">'+u.phone+' · '+u.email+'</div>'
+          + '<span style="font-size:.62rem;background:'+rc.color+'20;color:'+rc.color+';padding:1px 6px;border-radius:100px;font-weight:700">'+rc.label+'</span>'
+          + '</div></div>'
+          + '<div style="text-align:right">'
+          + '<div style="font-size:.72rem;color:var(--green);font-weight:700">₹'+fmtS(u.wallet||0)+'</div>'
+          + '<div style="font-size:.62rem;color:var(--muted2)">'+u.joined+'</div>'
+          + '</div></div>';
+      }).join('')
+    : '<div style="text-align:center;padding:20px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:6px">👥</div>No referrals yet. Share your link!</div>';
+
+  el.innerHTML = '<div class="page-title">🔗 Referral & Network</div>'
+    + '<div class="page-sub">Your referral link, share to grow your network</div>'
+
+    // Referral Code Card
+    + '<div style="background:linear-gradient(135deg,rgba(0,212,170,.1),rgba(99,102,241,.1));border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:16px;margin-bottom:14px">'
+    + '<div style="font-size:.72rem;color:var(--muted2);font-weight:600;margin-bottom:6px">YOUR REFERRAL CODE</div>'
+    + '<div style="font-family:var(--font-head);font-size:1.4rem;font-weight:900;color:var(--rtai);letter-spacing:2px;margin-bottom:10px">'+refCode+'</div>'
+    + '<div style="font-size:.72rem;color:var(--muted2);margin-bottom:8px">YOUR REFERRAL LINK</div>'
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+    + '<input readonly value="'+refLink+'" id="ref-link-input" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--cyan);font-size:.72rem;font-family:monospace">'
+    + '<button onclick="copyRefLink()" style="padding:8px 14px;background:var(--rtai);border:none;border-radius:8px;color:#000;font-weight:700;font-size:.75rem;cursor:pointer;white-space:nowrap">📋 Copy</button>'
+    + '<button onclick="shareRefLink()" style="padding:8px 14px;background:#25d366;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.75rem;cursor:pointer;white-space:nowrap">📲 WhatsApp</button>'
+    + '</div></div>'
+
+    // Stats
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px">'
+    + [
+        ['Total Referred', refUsers.length, 'var(--cyan)'],
+        ['Active Users', refUsers.filter(function(u){return (u.txns||[]).length>0;}).length, 'var(--green)'],
+        ['Network Wallet','₹'+fmtS(refUsers.reduce(function(s,u){return s+(u.wallet||0);},0)),'var(--rtai)'],
+      ].map(function(s){
+        return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">'
+          + '<div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:'+s[2]+'">'+s[1]+'</div>'
+          + '<div style="font-size:.65rem;color:var(--muted2);margin-top:2px">'+s[0]+'</div></div>';
+      }).join('')
+    + '</div>'
+
+    + manualHTML
+
+    + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:10px">👥 Referred Members</div>'
+    + refListHTML;
+}
+
+function copyRefLink(){
+  var inp = document.getElementById('ref-link-input');
+  if(!inp) return;
+  navigator.clipboard.writeText(inp.value).then(function(){
+    toast('✅ Referral link copied!','s');
+  }).catch(function(){
+    inp.select(); document.execCommand('copy');
+    toast('✅ Referral link copied!','s');
+  });
+}
+
+function shareRefLink(){
+  var inp = document.getElementById('ref-link-input');
+  if(!inp) return;
+  var text = '🏦 Join BankMe — India\'s trusted financial services platform!\n\nUse my referral link to register:\n' + inp.value + '\n\nPowered by PayPe Technologies 🚀';
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+
+function addReferralCustomer(){
+  var name   = (document.getElementById('ref-name')  ||{}).value.trim();
+  var mobile = (document.getElementById('ref-mobile')||{}).value.trim();
+  var email  = (document.getElementById('ref-email') ||{}).value.trim();
+  var role   = (document.getElementById('ref-role')  ||{}).value;
+
+  if(!name)  { toast('Enter customer name','e'); return; }
+  if(!mobile||mobile.length!==10||!/^[6-9]/.test(mobile)){ toast('Enter valid 10-digit mobile','e'); return; }
+
+  var refCode = 'REF-' + (CU.uid||'').slice(-6).toUpperCase() + '-' + CU.role.slice(0,3).toUpperCase();
+  var newUser = {
+    id: genId(), uid: genId(),
+    name: name.toUpperCase(),
+    phone: mobile,
+    email: email,
+    role: role,
+    wallet: 0,
+    joined: nowStr(),
+    txns: [],
+    kyc: 'pending',
+    referredBy: refCode,
+    addedBy: CU.uid,
+    addedByName: CU.name,
+    commissionEarned: 0,
+    rtaiScore: 0,
+    riskLevel: 'Low'
+  };
+
+  if(db){
+    db.collection('bankme_users').add(newUser)
+    .then(function(ref){
+      newUser.uid = ref.id;
+      if(!window._networkUsers) window._networkUsers = [];
+      window._networkUsers.push(newUser);
+      addNotification('➕ '+name+' added to your network as '+role,'success','👤');
+      toast('✅ '+name+' added to your network!','s');
+      // Clear form
+      ['ref-name','ref-mobile','ref-email'].forEach(function(id){
+        var el=document.getElementById(id); if(el) el.value='';
+      });
+      renderReferral();
+    })
+    .catch(function(){
+      // Even if Firestore fails, add locally
+      if(!window._networkUsers) window._networkUsers = [];
+      window._networkUsers.push(newUser);
+      addNotification('➕ '+name+' added locally as '+role,'info','👤');
+      toast('✅ '+name+' added (offline mode)','s');
+      renderReferral();
+    });
+  } else {
+    if(!window._networkUsers) window._networkUsers = [];
+    window._networkUsers.push(newUser);
+    addNotification('➕ '+name+' added to your network','info','👤');
+    toast('✅ '+name+' added!','s');
+    renderReferral();
+  }
+}
+
+// Handle referral code from URL on app load
+(function checkRefCodeOnLoad(){
+  var hash = window.location.search;
+  if(hash && hash.indexOf('ref=')>=0){
+    var refCode = hash.split('ref=')[1].split('&')[0];
+    if(refCode) window._incomingRefCode = refCode;
+  }
+})();
+
+// ══════════════════════════════════════
+// THEME SWITCHER
+// ══════════════════════════════════════
+var THEMES = {
+  dark:  { label:'Dark',          auth_bg:'radial-gradient(ellipse at 20% 50%,#001a2e,transparent 60%),radial-gradient(ellipse at 80% 50%,#001520,transparent 60%),var(--bg)' },
+  light: { label:'Light Banking', auth_bg:'radial-gradient(ellipse at 20% 50%,#dbeafe,transparent 60%),radial-gradient(ellipse at 80% 50%,#e0f2fe,transparent 60%),var(--bg)' },
+  blue:  { label:'Blue Pro',      auth_bg:'radial-gradient(ellipse at 20% 50%,#0a1628,transparent 60%),radial-gradient(ellipse at 80% 50%,#0f2040,transparent 60%),var(--bg)' },
+  green: { label:'Green Finance', auth_bg:'radial-gradient(ellipse at 20% 50%,#dcfce7,transparent 60%),radial-gradient(ellipse at 80% 50%,#d1fae5,transparent 60%),var(--bg)' },
+  gold:  { label:'Gold Premium',  auth_bg:'radial-gradient(ellipse at 20% 50%,#1a1000,transparent 60%),radial-gradient(ellipse at 80% 50%,#0d0800,transparent 60%),var(--bg)' },
+};
+
+function setTheme(theme){
+  var html = document.documentElement;
+  if(theme === 'dark'){
+    html.removeAttribute('data-theme');
+  } else {
+    html.setAttribute('data-theme', theme);
+  }
+
+  // Update active button
+  Object.keys(THEMES).forEach(function(t){
+    var btn = document.getElementById('th-'+t);
+    if(btn) btn.className = 'theme-btn' + (t===theme?' active':'');
+  });
+
+  // Update auth page background
+  var authPage = document.getElementById('auth-page');
+  if(authPage && THEMES[theme]){
+    authPage.style.background = THEMES[theme].auth_bg;
+  }
+
+  // Fix input/button colors for light/green themes
+  var isLight = theme==='light'||theme==='green';
+  var inputs = document.querySelectorAll('.finp,.fsel');
+  inputs.forEach(function(el){
+    el.style.color = isLight ? 'var(--text)' : '';
+  });
+
+  // Save preference
+  try{ localStorage.setItem('bankme_theme', theme); }catch(e){}
+  toast('🎨 '+THEMES[theme].label+' theme applied','s');
+}
+
+function loadSavedTheme(){
+  try{
+    var saved = localStorage.getItem('bankme_theme') || 'dark';
+    setTheme(saved);
+  }catch(e){ setTheme('dark'); }
+}
+
+// Load theme on page ready
+document.addEventListener('DOMContentLoaded', function(){
+  loadSavedTheme();
+});
+
+// ══════════════════════════════════════
 // goPage hook for dynamic pages
 // ══════════════════════════════════════
 var _origGoPage = goPage;
@@ -8134,6 +8618,7 @@ goPage = function(pg){
   if(pg === 'commission') renderCommission();
   if(pg === 'apikeys')    renderApiKeys();
   if(pg === 'dispute')    renderDispute();
+  if(pg === 'referral')   renderReferral();
   if(pg === 'profile' && (CU && (CU.role==='whitelabel'||CU.role==='admin'))){
     setTimeout(renderWhitelabelSettings, 100);
   }
