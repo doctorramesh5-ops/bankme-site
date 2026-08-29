@@ -1,0 +1,8 @@
+{
+  "redirects": [
+    {
+      "source": "/digilocker/callback",
+      "destination": "/digilocker/callback.html"
+    }
+  ]
+}
