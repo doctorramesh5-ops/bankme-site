@@ -1,8 +1,8 @@
 {
-  "redirects": [
+  "rewrites": [
     {
       "source": "/digilocker/callback",
-      "destination": "/digilocker/callback.html"
+      "destination": "/digilocker/callback/index.html"
     }
   ]
 }
