@@ -1299,7 +1299,10 @@ function resendOTP(){
   .catch(function(){ toast('⚠️ Resend failed', 'e'); });
 }
 
+var _verifyInFlight = false;
 function verifyOTP(){
+  if(_verifyInFlight) return;  // guard against double-submit (auto + enter/click)
+
   var entered = '';
   for(var i=0;i<6;i++) entered += (document.getElementById('otp'+i).value||'');
   var err = document.getElementById('otp-err');
@@ -1307,6 +1310,7 @@ function verifyOTP(){
 
   if(entered.length < 6){ err.textContent = 'Enter all 6 digits'; return; }
 
+  _verifyInFlight = true;
   var btn = document.getElementById('otp-verify-btn');
   if(btn){ btn.textContent = 'Verifying...'; btn.disabled = true; }
 
@@ -1320,6 +1324,7 @@ function verifyOTP(){
   .then(function(r){ return r.json(); })
   .then(function(d){
     console.log('Verify response:', d);
+    _verifyInFlight = false;
     if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
     if(d && d.success && d.verified){
       clearInterval(_otpTimer);
@@ -1335,6 +1340,7 @@ function verifyOTP(){
   })
   .catch(function(e){
     console.warn('Verify error:', e);
+    _verifyInFlight = false;
     if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
     err.textContent = 'Verification failed. Please try again.';
   });
