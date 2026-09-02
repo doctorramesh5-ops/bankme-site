@@ -1205,7 +1205,7 @@ function requestOTP(){
   fetch(BACKEND_URL + '/otp/send', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ phone: mobile })
+    body: JSON.stringify({ phone: mobile, email: email, name: (matchedUser ? matchedUser.name : 'Customer') })
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
