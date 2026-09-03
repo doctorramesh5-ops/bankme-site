@@ -1276,13 +1276,15 @@ function resendOTP(){
   startOTPTimer();
 
   var email = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
-  var url = CF_WORKER + '?action=resend&phone=' + _otpMobile;
-  if(email && /\S+@\S+\.\S+/.test(email)) url += '&email=' + encodeURIComponent(email);
 
-  fetch(url, { method: 'GET' })
+  fetch(BACKEND_URL + '/otp/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: _otpMobile, email: email })
+  })
   .then(function(r){ return r.json(); })
   .then(function(d){
-    if(d && d.type === 'success'){
+    if(d && d.success){
       toast('📱 New OTP sent to +91 ' + _otpMobile, 's');
     } else {
       toast('⚠️ Resend failed: ' + (d.message||''), 'e');
@@ -1339,15 +1341,15 @@ function verifyOTP(){
 }
 
 function sendMsg91OTPSignup(mobile, email, name, onSuccess, onFail){
-  var url = CF_WORKER + '?action=send&phone=' + mobile;
-  if(email) url += '&email=' + encodeURIComponent(email);
-  if(name)  url += '&name='  + encodeURIComponent(name);
-
-  fetch(url, { method: 'GET' })
+  fetch(BACKEND_URL + '/otp/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: mobile, email: email, name: name })
+  })
   .then(function(r){ return r.json(); })
   .then(function(d){
     console.log('BankMe Signup OTP response:', d);
-    if(d && d.type === 'success'){
+    if(d && d.success){
       if(onSuccess) onSuccess();
     } else {
       if(onFail) onFail(d.message || 'OTP send failed');
@@ -1636,10 +1638,12 @@ function suResendOTP(){
   var suPhone = document.getElementById('si-phone') ? document.getElementById('si-phone').value.trim() : '';
   var suEmail = document.getElementById('si-email') ? document.getElementById('si-email').value.trim() : '';
   var suName  = document.getElementById('si-name')  ? document.getElementById('si-name').value.trim()  : 'Customer';
-  var url = CF_WORKER + '?action=resend&phone=' + suPhone;
-  if(suEmail) url += '&email=' + encodeURIComponent(suEmail);
-  if(suName)  url += '&name='  + encodeURIComponent(suName);
-  fetch(url, { method: 'GET' })
+
+  fetch(BACKEND_URL + '/otp/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: suPhone, email: suEmail, name: suName })
+  })
   .then(function(r){ return r.json(); })
   .then(function(d){ toast('📱 New OTP sent to +91 ' + suPhone, 's'); })
   .catch(function(){ toast('⚠️ Resend failed', 'e'); });
@@ -1663,13 +1667,16 @@ function doSignupVerifyOTP(){
   btn.disabled=true; btn.textContent='Verifying…';
 
   var phone = document.getElementById('si-phone').value.trim();
-  var url = CF_WORKER + '?action=verify&phone=' + phone + '&otp=' + entered;
 
-  fetch(url, { method: 'GET' })
+  fetch(BACKEND_URL + '/otp/verify', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: phone, otp: entered })
+  })
   .then(function(r){ return r.json(); })
   .then(function(d){
     console.log('Signup verify response:', d);
-    if(d && d.type === 'success'){
+    if(d && d.success && d.verified){
       clearInterval(_suOtpTimer);
       btn.textContent='Creating Account…';
       doSignup();
@@ -1740,23 +1747,22 @@ function doSignup(){
     if(suErr) suErr.textContent = msg||'Signup failed. Please try again.';
   }
 
-  if(auth){
-    auth.createUserWithEmailAndPassword(email,pass)
-      .then(function(cred){
-        var ud={uid:cred.user.uid,name:name,email:email,phone:phone,role:role,
-                wallet:walletMap[role]||1200,joined:nowStr(),txns:[],kyc:'pending',
-                commissionEarned:0,rtaiScore:75,riskLevel:'Medium'};
-        if(db) return db.collection('bankme_users').doc(cred.user.uid).set(ud)
-                        .then(function(){ return onSuccess(cred.user.uid); });
-        else return onSuccess(cred.user.uid);
-      })
-      .catch(function(e){
-        onFail(e.code==='auth/email-already-in-use'?'Email already registered. Please sign in.':'Account creation failed.');
-      });
-  } else {
-    // No Firebase — create local account
-    onSuccess('local_'+Date.now());
-  }
+  fetch(BACKEND_URL + '/user/login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: phone })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d && d.user){
+      onSuccess(d.user._id || phone);
+    } else {
+      onFail('Account creation failed. Please try again.');
+    }
+  })
+  .catch(function(e){
+    onFail('Account creation failed. Please try again.');
+  });
 }
 
 function loadUser(uid){
