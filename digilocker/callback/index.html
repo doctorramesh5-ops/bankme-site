@@ -5,13 +5,15 @@
   <h1 id="status">Verifying your identity...</h1>
   <p id="detail"></p>
   <script>
-    const code = new URLSearchParams(window.location.search).get('code');
-    if (code) {
-      fetch('https://bankme-backend.onrender.com/digilocker/token', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code: code })
-      })
+  const params = new URLSearchParams(window.location.search);
+const code = params.get('code');
+const state = params.get('state');
+if (code) {
+  fetch('https://bankme-backend.onrender.com/digilocker/token', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ code: code, state: state })
+  })
       .then(function(r){ return r.json(); })
       .then(function(data){
         document.getElementById('status').innerText =
