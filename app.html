@@ -532,6 +532,28 @@ main{flex:1;overflow:auto}
           </div>
           <div id="su-otp-timer" style="text-align:center;font-size:.72rem;color:var(--muted2);margin-top:6px"></div>
         </div>
+
+        <!-- STEP 3: Email OTP Verification (signup only) -->
+        <div id="su-step3" style="display:none">
+          <div style="text-align:center;margin-bottom:14px">
+            <div style="font-size:1.6rem;margin-bottom:4px">📧</div>
+            <div style="font-size:.88rem;font-weight:700;color:var(--text)">Verify Your Email</div>
+            <div style="font-size:.72rem;color:var(--muted2);margin-top:3px">OTP sent to <strong id="su-email-otp-addr" style="color:var(--cyan)"></strong></div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px">
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp0" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp1" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp2" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp3" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp4" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+            <input class="otp-box" type="tel" maxlength="1" id="su-eotp5" style="width:42px;height:52px;text-align:center;font-size:1.4rem;font-weight:700;border-radius:10px;background:var(--bg3);border:2px solid var(--border2);color:var(--text)"/>
+          </div>
+          <div class="ferr" id="su-eotp-err"></div>
+          <button class="btn-primary" id="su-everify-btn" onclick="doSignupVerifyEmailOTP()" style="width:100%">Verify Email & Continue →</button>
+          <div style="display:flex;justify-content:center;margin-top:10px">
+            <button onclick="suResendEmailOTP()" style="background:none;border:none;color:var(--cyan);font-size:.8rem;cursor:pointer">Resend Email OTP</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1617,6 +1639,30 @@ function initSuOTPBoxes(){
   }
 }
 
+var _emailVerifyInFlight = false;
+function initSuEmailOTPBoxes(){
+  for(var i=0;i<6;i++){
+    (function(idx){
+      var box=document.getElementById('su-eotp'+idx);
+      if(!box) return;
+      box.style.borderColor='var(--border2)';
+      box.value='';
+      box.oninput=function(){
+        this.value=this.value.replace(/[^0-9]/,'');
+        if(this.value.length===1 && idx<5) document.getElementById('su-eotp'+(idx+1)).focus();
+        if(this.value.length===1 && idx===5){
+          var code=''; for(var k=0;k<6;k++) code+=(document.getElementById('su-eotp'+k).value||'');
+          if(code.length===6 && !_emailVerifyInFlight){ _emailVerifyInFlight=true; setTimeout(function(){ doSignupVerifyEmailOTP(); _emailVerifyInFlight=false; },300); }
+        }
+        this.style.borderColor=this.value?'var(--cyan)':'var(--border2)';
+      };
+      box.onkeydown=function(e){
+        if(e.key==='Backspace'&&!this.value&&idx>0) document.getElementById('su-eotp'+(idx-1)).focus();
+      };
+    })(i);
+  }
+}
+
 function startSuOTPTimer(){
   clearInterval(_suOtpTimer);
   _suOtpTimer=setInterval(function(){
@@ -1678,8 +1724,21 @@ function doSignupVerifyOTP(){
     console.log('Signup verify response:', d);
     if(d && d.success && d.verified){
       clearInterval(_suOtpTimer);
-      btn.textContent='Creating Account…';
-      doSignup();
+      btn.disabled=false; btn.textContent='Verify & Create Account →';
+      // Mobile verified — now move to email OTP step
+      var email = document.getElementById('si-email').value.trim();
+      document.getElementById('su-step2').style.display='none';
+      document.getElementById('su-step3').style.display='block';
+      document.getElementById('su-email-otp-addr').textContent = email;
+      initSuEmailOTPBoxes();
+      setTimeout(function(){ var b=document.getElementById('su-eotp0'); if(b) b.focus(); }, 100);
+      fetch(BACKEND_URL + '/otp/send-email', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ phone: phone, email: email, name: document.getElementById('si-name').value.trim() })
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(ed){ console.log('Email OTP send:', ed); if(ed && ed.success){ toast('📧 OTP sent to ' + email, 's'); } else { toast('⚠️ Email OTP failed: ' + (ed.message||''), 'e'); } });
     } else {
       btn.disabled=false; btn.textContent='Verify & Create Account →';
       for(var j=0;j<6;j++){ var b=document.getElementById('su-otp'+j); if(b) b.style.borderColor='var(--danger)'; }
@@ -1718,6 +1777,55 @@ function checkDemoCode(){
     err.textContent='Invalid access code. Contact PayPe Technologies.';
     inp.value='';
   }
+}
+
+function doSignupVerifyEmailOTP(){
+  var entered='';
+  for(var i=0;i<6;i++) entered+=(document.getElementById('su-eotp'+i).value||'');
+  var err=document.getElementById('su-eotp-err');
+  err.textContent='';
+  if(entered.length<6){ err.textContent='Enter all 6 digits'; return; }
+
+  var btn=document.getElementById('su-everify-btn');
+  btn.disabled=true; btn.textContent='Verifying…';
+  var phone = document.getElementById('si-phone').value.trim();
+
+  fetch(BACKEND_URL + '/otp/verify-email', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: phone, otp: entered })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    console.log('Email verify response:', d);
+    if(d && d.success && d.verified){
+      btn.textContent='Creating Account…';
+      doSignup();
+    } else {
+      btn.disabled=false; btn.textContent='Verify Email & Continue →';
+      for(var j=0;j<6;j++){ var b=document.getElementById('su-eotp'+j); if(b) b.style.borderColor='var(--danger)'; }
+      err.textContent = d.message || 'Incorrect OTP. Try again.';
+    }
+  })
+  .catch(function(e){
+    btn.disabled=false; btn.textContent='Verify Email & Continue →';
+    err.textContent='Verification failed. Try again.';
+  });
+}
+
+function suResendEmailOTP(){
+  var phone = document.getElementById('si-phone').value.trim();
+  var email = document.getElementById('si-email').value.trim();
+  var name  = document.getElementById('si-name').value.trim();
+  for(var i=0;i<6;i++){ var b=document.getElementById('su-eotp'+i); if(b){b.value='';b.style.borderColor='var(--border2)';} }
+  fetch(BACKEND_URL + '/otp/send-email', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: phone, email: email, name: name })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){ toast('📧 New OTP sent to ' + email, 's'); })
+  .catch(function(){ toast('⚠️ Resend failed', 'e'); });
 }
 
 function doSignup(){
