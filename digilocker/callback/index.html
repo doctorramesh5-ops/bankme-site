@@ -14,14 +14,17 @@ if (code) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ code: code, state: state })
   })
-      .then(function(r){ return r.json(); })
       .then(function(data){
-        document.getElementById('status').innerText =
-          data.success ? 'KYC Verified!' : 'Verification failed';
-        document.getElementById('detail').innerText =
-          data.success ? 'You can close this window and return to the app.'
-                        : 'Please try again.';
-      })
+  document.getElementById('status').innerText =
+    data.success ? 'KYC Verified!' : 'Verification failed';
+  document.getElementById('detail').innerText =
+    data.success ? 'Redirecting you back...' : 'Please try again.';
+  if (data.success) {
+    setTimeout(function(){
+      window.location.href = 'https://bankme.co.in/app.html?kyc=success';
+    }, 2000);
+  }
+})
       .catch(function(){
         document.getElementById('status').innerText = 'Connection error';
       });
