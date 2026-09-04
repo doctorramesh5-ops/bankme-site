@@ -15,6 +15,7 @@ if (code) {
     body: JSON.stringify({ code: code, state: state })
   })
       .then(function(data){
+  console.log('KYC callback response:', JSON.stringify(data));
   document.getElementById('status').innerText =
     data.success ? 'KYC Verified!' : 'Verification failed';
   document.getElementById('detail').innerText =
