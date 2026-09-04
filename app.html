@@ -1417,32 +1417,33 @@ function _handleOTPSuccess(mobile){
     commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
   };
 
-  if(db){
-    db.collection('bankme_users').where('phone','==',mobile).limit(1).get()
-      .then(function(snap){
-        if(!snap.empty){
-          var doc = snap.docs[0];
-          var profile = doc.data(); profile.uid = doc.id;
-          loginWithProfile(profile);
-        } else {
-          // Save new user to Firestore
-          db.collection('bankme_users').add(defaultProfile)
-            .then(function(ref){
-              defaultProfile.uid = ref.id;
-              loginWithProfile(defaultProfile);
-            })
-            .catch(function(){
-              loginWithProfile(defaultProfile);
-            });
-        }
-      })
-      .catch(function(){
-        // Firestore failed — still let user in
-        loginWithProfile(defaultProfile);
-      });
-  } else {
+  // Load real user data (wallet, KYC status) from our backend/MongoDB
+  fetch(BACKEND_URL + '/user/login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: mobile })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    var u = d && d.user;
+    var profile = {
+      id: genId(), uid: (u && u._id) || genId(),
+      phone: mobile,
+      name: (u && u.name) || defaultProfile.name,
+      email: (u && u.email) || '',
+      role: 'customer',
+      wallet: (u && u.wallet) || 0,
+      joined: nowStr(), txns: [],
+      kyc: (u && u.kycStatus) || 'pending',
+      kycDocuments: (u && u.kycDocuments) || [],
+      commissionEarned: 0, rtaiScore: 0, riskLevel: 'Low'
+    };
+    loginWithProfile(profile);
+  })
+  .catch(function(){
+    // Backend unreachable — still let user in with defaults
     loginWithProfile(defaultProfile);
-  }
+  });
 }
 
 function backToMobile(){
@@ -2029,6 +2030,20 @@ function renderWLDashboard(){
     +renderNetworkStatus('whitelabel')+'</div>';
 }
 
+function startDigiLockerKYC(){
+  toast('Redirecting to DigiLocker...', 'i');
+  fetch(BACKEND_URL + '/digilocker/auth-url?phone=' + encodeURIComponent(CU.phone))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.authUrl){
+        window.location.href = d.authUrl;
+      } else {
+        toast('⚠️ Could not start KYC. Please try again.', 'e');
+      }
+    })
+    .catch(function(){ toast('⚠️ Network error starting KYC.', 'e'); });
+}
+
 function renderUserDashboard(){
   var el=document.getElementById("page-dashboard");
   var hasNetwork=["superdist","distributor","admin","whitelabel"].indexOf(CU.role)>=0;
@@ -2059,6 +2074,25 @@ function renderUserDashboard(){
     statsDiv.appendChild(card);
   });
   el.appendChild(statsDiv);
+
+  // KYC status card (only shown if not yet verified)
+  if(CU.kyc !== 'verified'){
+    var kycCard=document.createElement('div');
+    kycCard.style.cssText='background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.04));border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap';
+    kycCard.innerHTML="<div><div style='font-weight:700;font-size:.88rem;color:var(--text)'>⚠️ Complete Your KYC</div><div style='font-size:.75rem;color:var(--muted2);margin-top:2px'>Verify your PAN/DL via DigiLocker to unlock full features</div></div>";
+    var kycBtn=document.createElement('button');
+    kycBtn.className='btn-primary';
+    kycBtn.style.cssText='white-space:nowrap;padding:10px 18px;font-size:.82rem';
+    kycBtn.textContent='Start KYC →';
+    kycBtn.onclick=startDigiLockerKYC;
+    kycCard.appendChild(kycBtn);
+    el.appendChild(kycCard);
+  } else {
+    var kycDoneCard=document.createElement('div');
+    kycDoneCard.style.cssText='background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:14px;padding:14px 16px;margin-bottom:14px';
+    kycDoneCard.innerHTML="<div style='font-weight:700;font-size:.85rem;color:var(--green)'>✅ KYC Verified</div><div style='font-size:.72rem;color:var(--muted2);margin-top:2px'>Documents: "+((CU.kycDocuments||[]).join(', ')||'Verified')+"</div>";
+    el.appendChild(kycDoneCard);
+  }
 
   // Services heading
   var svcHead=document.createElement("div");
