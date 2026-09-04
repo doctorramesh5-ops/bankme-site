@@ -18,13 +18,13 @@ if (code) {
       .then(function(data){
   console.log('KYC callback response:', JSON.stringify(data));
   document.getElementById('status').innerText =
-    data.success ? 'KYC Verified!' : 'Verification failed';
+    data.success ? '✅ KYC Verified!' : 'Verification failed';
   document.getElementById('detail').innerText =
-    data.success ? 'Redirecting you back...' : 'Please try again.';
+    data.success ? 'Your PAN has been verified. Please log in again to continue.' : 'Please try again.';
   if (data.success) {
     setTimeout(function(){
-      window.location.href = 'https://bankme.co.in/app.html?kyc=success';
-    }, 2000);
+      window.location.href = 'https://bankme.co.in/app.html';
+    }, 3000);
   }
 })
       .catch(function(){
