@@ -425,8 +425,7 @@ main{flex:1;overflow:auto}
           </div>
           <div class="ferr" id="li-err"></div>
           <button class="btn-primary" id="li-otp-btn" onclick="requestOTP()" style="width:100%">Send OTP →</button>
-          <label class="flabel" style="margin-top:10px">Email (optional — also receive OTP by email)</label>
-          <input class="finp" type="email" id="li-email" placeholder="Email address" style="margin-bottom:0" autocomplete="email"/>
+          <input class="finp" type="email" id="li-email" style="display:none" aria-hidden="true"/>
           <input type="password" id="li-pass" style="display:none" aria-hidden="true"/>
           <p style="text-align:center;margin-top:10px;font-size:.8rem;color:var(--muted2)">
             No account? <span class="flink" onclick="switchAuth('signup')">Create one free</span>
