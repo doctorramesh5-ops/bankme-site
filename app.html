@@ -6467,15 +6467,65 @@ function renderNetwork(){
 // ══════════════════════════════════════
 var TXN_FILTER = {service:'all', month:'all', period:'all'};
 
-function renderProfile(){
+function handleAvatarUpload(input){
+  var file = input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    fetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ avatarUrl: e.target.result })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.success){
+        CU.avatarUrl = e.target.result;
+        renderProfile(true);
+        toast('✅ Profile photo updated', 's');
+      } else {
+        toast('⚠️ Failed to save photo', 'e');
+      }
+    })
+    .catch(function(){ toast('⚠️ Upload failed', 'e'); });
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderProfile(skipFetch){
   var el=document.getElementById('page-profile');
   var rc=getRC(CU.role);
+
+  // Refresh real KYC/profile data from backend (PAN name, number, DOB, gender) — once per view
+  if(CU.phone && !skipFetch){
+    fetch(BACKEND_URL + '/user/' + CU.phone + '/kyc-status')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.success){
+          CU.kyc = d.kycStatus || CU.kyc;
+          CU.panName = d.panName;
+          CU.panNumber = d.panNumber;
+          CU.dob = d.dob;
+          CU.gender = d.gender;
+          if(d.name) CU.name = d.name;
+          if(d.avatarUrl) CU.avatarUrl = d.avatarUrl;
+          renderProfile(true); // re-render with fresh data, skip re-fetching
+        }
+      })
+      .catch(function(){});
+  }
 
   el.innerHTML=
     // Header
     '<div class="page-title">⚙ Profile</div>'
     +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">'
-    +'<div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,'+rc.color+','+rc.color+'88);display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#fff;font-weight:700;font-family:var(--font-head)">'+(CU.name||'U')[0].toUpperCase()+'</div>'
+    +'<div style="position:relative;width:54px;height:54px;cursor:pointer" onclick="document.getElementById(\'f-avatar\').click()">'
+    +(CU.avatarUrl
+      ? '<img src="'+CU.avatarUrl+'" style="width:54px;height:54px;border-radius:50%;object-fit:cover"/>'
+      : '<div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,'+rc.color+','+rc.color+'88);display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#fff;font-weight:700;font-family:var(--font-head)">'+(CU.name||'U')[0].toUpperCase()+'</div>')
+    +'<div style="position:absolute;bottom:-2px;right:-2px;background:var(--rtai);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:.6rem;border:2px solid var(--bg1)">✏️</div>'
+    +'<input type="file" id="f-avatar" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)"/>'
+    +'</div>'
     +'<div>'
     +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+CU.name+'</div>'
     +'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
@@ -6488,7 +6538,7 @@ function renderProfile(){
     +'<div style="font-size:.75rem;color:var(--muted2);margin-top:2px">'+(CU.kyc==='verified'?'Aadhaar linked · RBI compliant':'Complete eKYC to access all services')+'</div></div></div>'
     +'<div class="pcard" style="margin-bottom:14px">'
     +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:10px;color:var(--text)">👤 Account Details</div>'
-    +[['Name',CU.name],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
+    +[['Name (as per PAN)',CU.panName||CU.name],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
       return '<div class="prow"><span style="color:var(--muted2);font-size:.85rem">'+r[0]+'</span><span style="color:var(--text);font-weight:500;font-size:.85rem">'+r[1]+'</span></div>';
     }).join('')
     +'</div>'
