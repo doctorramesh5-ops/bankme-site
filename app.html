@@ -6738,6 +6738,8 @@ function renderProfile(skipFetch){
     +'<textarea class="finp" id="f-address" placeholder="Full shop address" rows="2" style="resize:none">'+(CU.shopAddress||'')+'</textarea>'
     +'<label class="flabel">Google Maps Link</label>'
     +'<input class="finp" id="f-maps" placeholder="https://maps.google.com/..." value="'+(CU.mapsLink||'')+'"/>'
+    +'<button type="button" onclick="captureShopGeoTag()" style="width:100%;margin-bottom:6px;padding:9px;font-size:.8rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);border-radius:8px;cursor:pointer">📍 Get Current Shop Location</button>'
+    +'<div id="geo-status" style="font-size:.72rem;color:var(--muted2);text-align:center;margin-bottom:10px">'+(CU.shopGeoLat?('✅ Location on file: '+CU.shopGeoLat.toFixed(5)+', '+CU.shopGeoLng.toFixed(5)):'Location not yet captured')+'</div>'
     +'<label class="flabel">Shop Front Photo</label>'
     +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-shopfront\').click()">'
     +'<div style="font-size:1.5rem;margin-bottom:4px">🏪</div>'
@@ -6887,6 +6889,25 @@ function previewPhoto(input, previewId, field){
   reader.readAsDataURL(file);
 }
 
+function captureShopGeoTag(){
+  var statusEl = document.getElementById('geo-status');
+  if(!navigator.geolocation){
+    if(statusEl) statusEl.textContent = 'Geolocation not supported on this device';
+    return;
+  }
+  if(statusEl) statusEl.textContent = '📍 Getting location...';
+  navigator.geolocation.getCurrentPosition(function(pos){
+    CU._tempGeo = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if(statusEl) statusEl.textContent = '✅ Location captured: ' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5);
+    var mapsInput = document.getElementById('f-maps');
+    if(mapsInput && !mapsInput.value){
+      mapsInput.value = 'https://maps.google.com/?q=' + pos.coords.latitude + ',' + pos.coords.longitude;
+    }
+  }, function(err){
+    if(statusEl) statusEl.textContent = '⚠️ Could not get location: ' + err.message;
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
 async function saveShopDetails(){
   var shopName=document.getElementById('f-shopname')?.value.trim();
   var bizCert=document.getElementById('f-bizcert')?.value;
@@ -6895,6 +6916,10 @@ async function saveShopDetails(){
   var maps=document.getElementById('f-maps')?.value.trim();
 
   if(!shopName){ toast('Please enter shop name','e'); return; }
+  if(!CU._tempGeo && !(CU.shopGeoLat && CU.shopGeoLng)){
+    toast('Please capture shop location (📍 Get Location) before saving','e');
+    return;
+  }
 
   var updates={
     shopName:shopName,
@@ -6904,22 +6929,32 @@ async function saveShopDetails(){
     mapsLink:maps||'',
   };
 
+  if(CU._tempGeo){
+    updates.shopGeoLat = CU._tempGeo.lat;
+    updates.shopGeoLng = CU._tempGeo.lng;
+  }
+
   // Add photos if uploaded
   if(CU._tempPhotos){
     if(CU._tempPhotos.shopFrontPhoto) updates.shopFrontPhoto=CU._tempPhotos.shopFrontPhoto;
     if(CU._tempPhotos.shopBoardPhoto) updates.shopBoardPhoto=CU._tempPhotos.shopBoardPhoto;
   }
 
-  // Save to Firebase
+  // Save to backend (MongoDB)
   try{
-    if(db&&CU.uid){
-      await db.collection('bankme_users').doc(CU.uid).update(updates);
-    }
-  }catch(e){ console.log('Firebase update failed',e); }
+    var r = await fetch(BACKEND_URL + '/user/' + CU.phone + '/shop-details', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(updates)
+    });
+    var d = await r.json();
+    if(!d.success){ toast('⚠️ Failed to save shop details', 'e'); return; }
+  }catch(e){ toast('⚠️ Network error saving shop details', 'e'); return; }
 
   // Update local CU
   Object.keys(updates).forEach(function(k){ CU[k]=updates[k]; });
   CU._tempPhotos={};
+  CU._tempGeo=null;
 
   toast('Shop details saved! ✅','s');
   toggleShopEdit();
