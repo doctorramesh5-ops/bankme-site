@@ -495,13 +495,26 @@ main{flex:1;overflow:auto}
           <label class="flabel">Create Password</label>
           <input class="finp" type="password" id="si-pass" placeholder="Min 6 characters"/>
           <label class="flabel">Account Type</label>
-          <select class="fsel" id="si-role">
+          <select class="fsel" id="si-role" onchange="toggleWLFields()">
             <option value="customer">Customer (B2C)</option>
             <option value="retailer">Retailer (Shop Owner)</option>
             <option value="distributor">Distributor</option>
             <option value="superdist">Super Distributor</option>
             <option value="whitelabel">White Label Partner</option>
           </select>
+          <div id="wl-fields" style="display:none;margin-top:8px;border:1px solid rgba(139,92,246,.25);background:rgba(139,92,246,.06);border-radius:10px;padding:12px">
+            <div style="font-size:.78rem;color:#8b5cf6;font-weight:700;margin-bottom:8px">🏢 Business Registration Required</div>
+            <label class="flabel">Company Registration Type</label>
+            <select class="fsel" id="si-companytype">
+              <option value="">-- Select --</option>
+              <option value="GST">GST Registered</option>
+              <option value="LLP">LLP (Limited Liability Partnership)</option>
+              <option value="PVT_LTD">Private Limited Company</option>
+            </select>
+            <label class="flabel">Registration Number (GSTIN / LLPIN / CIN)</label>
+            <input class="finp" id="si-gstnumber" placeholder="Enter registration number"/>
+            <div style="font-size:.72rem;color:var(--muted2)">⚠️ White Label access is restricted to businesses with valid GST, LLP, or Pvt Ltd registration.</div>
+          </div>
           <div class="ferr" id="si-err"></div>
           <button class="btn-primary" id="si-btn" onclick="doSignupStep1()" style="width:100%">Continue → Verify Mobile</button>
           <p style="text-align:center;margin-top:10px;font-size:.8rem;color:var(--muted2)">
@@ -1565,6 +1578,12 @@ var _suOtp = '';
 var _suOtpExpiry = 0;
 var _suOtpTimer = null;
 
+function toggleWLFields(){
+  var role = document.getElementById('si-role').value;
+  var el = document.getElementById('wl-fields');
+  if(el) el.style.display = (role === 'whitelabel') ? 'block' : 'none';
+}
+
 function doSignupStep1(){
   var name  = document.getElementById('si-name').value.trim();
   var phone = document.getElementById('si-phone').value.trim();
@@ -1581,6 +1600,13 @@ function doSignupStep1(){
   if(!/^[6-9]\d{9}$/.test(phone)){ err.textContent='Enter a valid 10-digit mobile number'; return; }
   if(!email || !/\S+@\S+\.\S+/.test(email)){ err.textContent='Enter a valid email address'; return; }
   if(pass.length < 6){ err.textContent='Password must be at least 6 characters'; return; }
+
+  if(role === 'whitelabel'){
+    var companyType = document.getElementById('si-companytype').value;
+    var gstNumber = document.getElementById('si-gstnumber').value.trim();
+    if(!companyType){ err.textContent='Please select your company registration type (GST/LLP/Pvt Ltd)'; return; }
+    if(!gstNumber || gstNumber.length < 6){ err.textContent='Please enter a valid registration number'; return; }
+  }
 
   // Check phone not already registered
   var already = DEMO_USERS.find(function(u){ return u.phone === phone; });
@@ -1855,10 +1881,13 @@ function doSignup(){
     if(suErr) suErr.textContent = msg||'Signup failed. Please try again.';
   }
 
+  var companyType = document.getElementById('si-companytype') ? document.getElementById('si-companytype').value : '';
+  var gstNumber = document.getElementById('si-gstnumber') ? document.getElementById('si-gstnumber').value.trim() : '';
+
   fetch(BACKEND_URL + '/user/login', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ phone: phone })
+    body: JSON.stringify({ phone: phone, name: name, email: email, role: role, companyType: companyType, gstNumber: gstNumber })
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
