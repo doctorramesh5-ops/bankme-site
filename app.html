@@ -6523,6 +6523,122 @@ function saveAddress(){
   .catch(function(){ toast('⚠️ Network error', 'e'); });
 }
 
+var _faceApiLoaded = false;
+function loadFaceApi(cb){
+  if(_faceApiLoaded){ cb(); return; }
+  var script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+  script.onload = function(){
+    faceapi.nets.tinyFaceDetector.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/tiny_face_detector')
+      .then(function(){ _faceApiLoaded = true; cb(); })
+      .catch(function(){ cb(); }); // proceed even if model fails to load
+  };
+  script.onerror = function(){ cb(); };
+  document.head.appendChild(script);
+}
+
+function openSelfieCapture(){
+  var modal = document.createElement('div');
+  modal.id = 'selfie-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:var(--bg1);border-radius:16px;padding:20px;max-width:360px;width:100%;text-align:center">'
+    +'<div style="font-family:var(--font-head);font-weight:700;margin-bottom:12px;color:var(--text)">📷 Take a Selfie</div>'
+    +'<div style="position:relative;border-radius:12px;overflow:hidden;background:#000">'
+    +'<video id="selfie-video" autoplay playsinline style="width:100%;display:block;transform:scaleX(-1)"></video>'
+    +'<canvas id="selfie-canvas" style="display:none"></canvas>'
+    +'</div>'
+    +'<div id="selfie-status" style="font-size:.75rem;color:var(--muted2);margin:10px 0">Position your face in the frame</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="closeSelfieCapture()" class="btn-outline" style="flex:1;padding:11px">Cancel</button>'
+    +'<button onclick="captureSelfie()" id="selfie-capture-btn" class="btn-primary" style="flex:1;padding:11px">Capture</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(modal);
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+    .then(function(stream){
+      window._selfieStream = stream;
+      document.getElementById('selfie-video').srcObject = stream;
+    })
+    .catch(function(e){
+      document.getElementById('selfie-status').textContent = '⚠️ Camera access denied or unavailable: ' + e.message;
+    });
+}
+
+function closeSelfieCapture(){
+  if(window._selfieStream){
+    window._selfieStream.getTracks().forEach(function(t){ t.stop(); });
+    window._selfieStream = null;
+  }
+  var modal = document.getElementById('selfie-modal');
+  if(modal) modal.remove();
+}
+
+function captureSelfie(){
+  var video = document.getElementById('selfie-video');
+  var canvas = document.getElementById('selfie-canvas');
+  var statusEl = document.getElementById('selfie-status');
+  var btn = document.getElementById('selfie-capture-btn');
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  var ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width, 0); ctx.scale(-1, 1); // un-mirror for the actual capture
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  btn.disabled = true;
+  statusEl.textContent = '🔍 Checking for face...';
+
+  loadFaceApi(function(){
+    function proceedWithoutCheck(){
+      finalizeSelfie(canvas.toDataURL('image/jpeg', 0.85));
+    }
+    if(typeof faceapi === 'undefined' || !_faceApiLoaded){
+      statusEl.textContent = '✅ Photo captured';
+      proceedWithoutCheck();
+      return;
+    }
+    faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+      .then(function(detection){
+        if(detection){
+          statusEl.textContent = '✅ Face detected! Saving...';
+          finalizeSelfie(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          statusEl.textContent = '⚠️ No face detected. Please center your face and try again.';
+          btn.disabled = false;
+        }
+      })
+      .catch(function(){
+        // If detection errors out, don't block the user — just proceed
+        finalizeSelfie(canvas.toDataURL('image/jpeg', 0.85));
+      });
+  });
+}
+
+function finalizeSelfie(dataUrl){
+  fetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ avatarUrl: dataUrl })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    closeSelfieCapture();
+    if(d && d.success){
+      CU.avatarUrl = dataUrl;
+      renderProfile(true);
+      toast('✅ Selfie saved as profile photo', 's');
+    } else {
+      toast('⚠️ Failed to save photo', 'e');
+    }
+  })
+  .catch(function(){
+    closeSelfieCapture();
+    toast('⚠️ Upload failed', 'e');
+  });
+}
+
 function handleAvatarUpload(input){
   var file = input.files[0];
   if(!file) return;
@@ -6662,12 +6778,11 @@ function renderProfile(skipFetch){
     // Header
     '<div class="page-title">⚙ Profile</div>'
     +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">'
-    +'<div style="position:relative;width:54px;height:54px;cursor:pointer" onclick="document.getElementById(\'f-avatar\').click()">'
+    +'<div style="position:relative;width:54px;height:54px;cursor:pointer" onclick="openSelfieCapture()">'
     +(CU.avatarUrl
       ? '<img src="'+CU.avatarUrl+'" style="width:54px;height:54px;border-radius:50%;object-fit:cover"/>'
       : '<div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,'+rc.color+','+rc.color+'88);display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#fff;font-weight:700;font-family:var(--font-head)">'+(CU.name||'U')[0].toUpperCase()+'</div>')
-    +'<div style="position:absolute;bottom:-2px;right:-2px;background:var(--rtai);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:.6rem;border:2px solid var(--bg1)">✏️</div>'
-    +'<input type="file" id="f-avatar" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)"/>'
+    +'<div style="position:absolute;bottom:-2px;right:-2px;background:var(--rtai);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:.6rem;border:2px solid var(--bg1)">📷</div>'
     +'</div>'
     +'<div>'
     +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+CU.name+'</div>'
