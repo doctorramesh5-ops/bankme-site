@@ -6467,6 +6467,33 @@ function renderNetwork(){
 // ══════════════════════════════════════
 var TXN_FILTER = {service:'all', month:'all', period:'all'};
 
+function toggleAddressEdit(){
+  var v = document.getElementById('addr-view');
+  var f = document.getElementById('addr-form');
+  if(f.style.display==='none'){ v.style.display='none'; f.style.display='block'; }
+  else { v.style.display='block'; f.style.display='none'; }
+}
+
+function saveAddress(){
+  var addr = document.getElementById('f-addr').value.trim();
+  fetch(BACKEND_URL + '/user/' + CU.phone + '/address', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ address: addr })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d && d.success){
+      CU.address = addr;
+      renderProfile(true);
+      toast('✅ Address saved', 's');
+    } else {
+      toast('⚠️ Failed to save address', 'e');
+    }
+  })
+  .catch(function(){ toast('⚠️ Network error', 'e'); });
+}
+
 function handleAvatarUpload(input){
   var file = input.files[0];
   if(!file) return;
@@ -6492,6 +6519,92 @@ function handleAvatarUpload(input){
   reader.readAsDataURL(file);
 }
 
+var INDIAN_BANKS = [
+  // Public Sector Banks
+  "State Bank of India","Punjab National Bank","Bank of Baroda","Canara Bank",
+  "Union Bank of India","Bank of India","Central Bank of India","Indian Bank",
+  "Indian Overseas Bank","UCO Bank","Bank of Maharashtra","Punjab & Sind Bank",
+  // Private Sector Banks
+  "HDFC Bank","ICICI Bank","Axis Bank","Kotak Mahindra Bank","IndusInd Bank",
+  "Yes Bank","IDFC FIRST Bank","Federal Bank","South Indian Bank","RBL Bank",
+  "Bandhan Bank","City Union Bank","DCB Bank","Karur Vysya Bank","Tamilnad Mercantile Bank",
+  "Karnataka Bank","Dhanlaxmi Bank","Jammu & Kashmir Bank","CSB Bank",
+  // Small Finance Banks
+  "AU Small Finance Bank","Equitas Small Finance Bank","Ujjivan Small Finance Bank",
+  "Suryoday Small Finance Bank","ESAF Small Finance Bank","Jana Small Finance Bank",
+  "Fincare Small Finance Bank","Utkarsh Small Finance Bank","North East Small Finance Bank",
+  "Shivalik Small Finance Bank","Unity Small Finance Bank",
+  // Payments Banks
+  "Airtel Payments Bank","India Post Payments Bank","Fino Payments Bank","Jio Payments Bank","NSDL Payments Bank",
+  // Cooperative Banks (major)
+  "Saraswat Co-operative Bank","Cosmos Co-operative Bank","Shamrao Vithal Co-operative Bank",
+  "TJSB Sahakari Bank","Abhyudaya Co-operative Bank","Bharat Co-operative Bank",
+  "NKGSB Co-operative Bank","Kalyan Janata Sahakari Bank","Punjab & Maharashtra Co-operative Bank"
+].sort();
+
+function toggleBankForm(){
+  var f = document.getElementById('bank-form');
+  f.style.display = f.style.display==='none' ? 'block' : 'none';
+}
+
+function loadBankAccounts(){
+  fetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var el = document.getElementById('bank-accounts-list');
+      if(!el) return;
+      if(!d.success || !d.accounts || d.accounts.length===0){
+        el.innerHTML = '<div style="font-size:.78rem;color:var(--muted2);text-align:center;padding:10px">No bank accounts added yet.</div>';
+        return;
+      }
+      el.innerHTML = d.accounts.map(function(a){
+        var statusColor = a.verificationStatus==='verified' ? 'var(--green)' : (a.verificationStatus==='rejected' ? 'var(--red)' : 'var(--gold)');
+        var statusLabel = a.verificationStatus==='verified' ? '✅ Verified' : (a.verificationStatus==='rejected' ? '❌ Rejected' : '⏳ Pending Verification');
+        return '<div class="prow" style="align-items:flex-start"><div><div style="font-weight:600;font-size:.85rem">'+(a.bankName||'Bank')+'</div><div style="font-size:.72rem;color:var(--muted2)">A/C ...'+String(a.accountNumber||'').slice(-4)+' · '+(a.ifsc||'')+'</div></div><span style="font-size:.68rem;font-weight:700;color:'+statusColor+'">'+statusLabel+'</span></div>';
+      }).join('');
+    })
+    .catch(function(){});
+}
+
+function submitBankAccount(){
+  var bankName = document.getElementById('f-bankname').value;
+  var ifsc = document.getElementById('f-ifsc').value.trim().toUpperCase();
+  var accno = document.getElementById('f-accno').value.trim();
+  var accno2 = document.getElementById('f-accno2').value.trim();
+  var err = document.getElementById('bank-form-err');
+  err.textContent = '';
+
+  if(!bankName){ err.textContent = 'Please select a bank'; return; }
+  if(!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)){ err.textContent = 'Enter a valid 11-character IFSC code'; return; }
+  if(!accno || accno.length < 9){ err.textContent = 'Enter a valid account number'; return; }
+  if(accno !== accno2){ err.textContent = 'Account numbers do not match'; return; }
+
+  var isBusiness = ['retailer','distributor','superdist','whitelabel'].indexOf(CU.role) >= 0;
+  var btn = document.getElementById('bank-submit-btn');
+  btn.disabled = true; btn.textContent = 'Verifying...';
+
+  fetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ accountNumber: accno, ifsc: ifsc, bankName: bankName, accountType: isBusiness ? 'business' : 'personal' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    btn.disabled = false; btn.textContent = 'Verify & Add Bank (₹5 charge) →';
+    if(d && d.success){
+      toast(d.message || '✅ Bank account added', 's');
+      toggleBankForm();
+      loadBankAccounts();
+    } else {
+      err.textContent = d.message || 'Failed to add bank account';
+    }
+  })
+  .catch(function(){
+    btn.disabled = false; btn.textContent = 'Verify & Add Bank (₹5 charge) →';
+    err.textContent = 'Network error. Please try again.';
+  });
+}
+
 function renderProfile(skipFetch){
   var el=document.getElementById('page-profile');
   var rc=getRC(CU.role);
@@ -6514,6 +6627,7 @@ function renderProfile(skipFetch){
       })
       .catch(function(){});
   }
+  setTimeout(loadBankAccounts, 100);
 
   el.innerHTML=
     // Header
@@ -6541,6 +6655,45 @@ function renderProfile(skipFetch){
     +[['Name (as per PAN)',CU.panName||CU.name],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
       return '<div class="prow"><span style="color:var(--muted2);font-size:.85rem">'+r[0]+'</span><span style="color:var(--text);font-weight:500;font-size:.85rem">'+r[1]+'</span></div>';
     }).join('')
+    +'</div>'
+    +'<div class="pcard" style="margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:var(--text)">📍 Address</div>'
+    +'<button onclick="toggleAddressEdit()" id="addr-edit-btn" style="font-size:.72rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);padding:4px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>'
+    +'</div>'
+    +'<div id="addr-view"><div class="prow"><span style="color:var(--muted2);font-size:.85rem">'+(CU.address||'No address set. Click Edit to add.')+'</span></div></div>'
+    +'<div id="addr-form" style="display:none;margin-top:8px">'
+    +'<textarea class="finp" id="f-addr" placeholder="Full address" rows="3" style="resize:none">'+(CU.address||'')+'</textarea>'
+    +'<button class="btn-primary" onclick="saveAddress()" style="width:100%;margin-top:6px">Save Address</button>'
+    +'</div>'
+    +'</div>'
+    +'<div class="pcard" style="margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:var(--text)">🆔 Aadhaar Verification</div>'
+    +'</div>'
+    +(CU.aadhaarVerified
+      ? '<div class="prow"><span style="color:var(--green);font-size:.85rem">✅ Aadhaar Verified</span><span style="color:var(--text);font-size:.82rem">'+(CU.aadhaarNumber||'')+'</span></div>'
+      : '<div class="prow"><span style="color:var(--gold);font-size:.85rem">⏳ Aadhaar verification coming soon</span></div>')
+    +'</div>'
+    +'<div class="pcard" style="margin-bottom:14px" id="bank-accounts-card">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;color:var(--text)">🏦 Bank Accounts for Payout</div>'
+    +'<button onclick="toggleBankForm()" id="bank-add-btn" style="font-size:.72rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);padding:4px 10px;border-radius:7px;cursor:pointer">+ Add Bank</button>'
+    +'</div>'
+    +'<div id="bank-accounts-list"><div style="font-size:.78rem;color:var(--muted2);text-align:center;padding:10px">Loading...</div></div>'
+    +'<div id="bank-form" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">'
+    +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">⚠️ The account holder name on this bank account must exactly match your '+(['retailer','distributor','superdist','whitelabel'].indexOf(CU.role)>=0?'registered business name':'PAN card name')+'. Mismatched accounts will be rejected.</div>'
+    +'<label class="flabel">Select Bank</label>'
+    +'<select class="fsel" id="f-bankname"><option value="">-- Select Bank --</option>'+INDIAN_BANKS.map(function(b){return '<option value="'+b+'">'+b+'</option>';}).join('')+'</select>'
+    +'<label class="flabel">IFSC Code</label>'
+    +'<input class="finp" id="f-ifsc" placeholder="e.g. SBIN0001234" style="text-transform:uppercase" maxlength="11"/>'
+    +'<label class="flabel">Account Number</label>'
+    +'<input class="finp" id="f-accno" type="text" placeholder="Enter account number" inputmode="numeric"/>'
+    +'<label class="flabel">Re-enter Account Number</label>'
+    +'<input class="finp" id="f-accno2" type="text" placeholder="Re-enter account number" inputmode="numeric"/>'
+    +'<div class="ferr" id="bank-form-err"></div>'
+    +'<button class="btn-primary" onclick="submitBankAccount()" id="bank-submit-btn" style="width:100%;margin-top:6px">Verify & Add Bank (₹5 charge) →</button>'
+    +'</div>'
     +'</div>'
     +'<div class="pcard" style="margin-bottom:14px">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
