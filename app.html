@@ -6537,6 +6537,70 @@ function loadFaceApi(cb){
   document.head.appendChild(script);
 }
 
+function startAadhaarVerification(){
+  var modal = document.createElement('div');
+  modal.id = 'aadhaar-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:var(--bg1);border-radius:16px;padding:24px;max-width:360px;width:100%;text-align:center">'
+    +'<div style="font-family:var(--font-head);font-weight:700;margin-bottom:14px;color:var(--text)">🆔 Verify Aadhaar</div>'
+    +'<div id="aadhaar-status" style="font-size:.82rem;color:var(--muted2);margin-bottom:14px">⏳ Generating QR code...</div>'
+    +'<div id="aadhaar-qr-container" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div>'
+    +'<button onclick="closeAadhaarModal()" class="btn-outline" style="width:100%;margin-top:14px;padding:11px">Close</button>'
+    +'</div>';
+  document.body.appendChild(modal);
+
+  fetch(BACKEND_URL + '/aadhaar/generate-qr', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: CU.phone, name: CU.panName || CU.name })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    var statusEl = document.getElementById('aadhaar-status');
+    var qrEl = document.getElementById('aadhaar-qr-container');
+    if(!statusEl || !qrEl) return;
+    if(d && d.success && d.data && d.data.data && d.data.data.qrCode){
+      statusEl.innerHTML = 'Open <b>mAadhaar app</b> on your phone and scan this QR code';
+      qrEl.innerHTML = '<img src="data:image/png;base64,'+d.data.data.qrCode+'" style="width:200px;height:200px;border-radius:8px"/>';
+      window._aadhaarPollPhone = CU.phone;
+      startAadhaarStatusPoll();
+    } else {
+      statusEl.textContent = '⚠️ ' + (d.error && d.error.message ? d.error.message : 'Could not generate QR code. Please try again.');
+    }
+  })
+  .catch(function(){
+    var statusEl = document.getElementById('aadhaar-status');
+    if(statusEl) statusEl.textContent = '⚠️ Network error. Please try again.';
+  });
+}
+
+var _aadhaarPollInterval = null;
+function startAadhaarStatusPoll(){
+  clearInterval(_aadhaarPollInterval);
+  _aadhaarPollInterval = setInterval(function(){
+    fetch(BACKEND_URL + '/user/' + CU.phone + '/kyc-status')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.success && d.aadhaarVerified){
+          clearInterval(_aadhaarPollInterval);
+          CU.aadhaarVerified = true;
+          CU.aadhaarNumber = d.aadhaarNumber;
+          closeAadhaarModal();
+          renderProfile(true);
+          toast('✅ Aadhaar verified successfully!', 's');
+        }
+      })
+      .catch(function(){});
+  }, 4000); // check every 4 seconds
+}
+
+function closeAadhaarModal(){
+  clearInterval(_aadhaarPollInterval);
+  var modal = document.getElementById('aadhaar-modal');
+  if(modal) modal.remove();
+}
+
 function openSelfieCapture(){
   var modal = document.createElement('div');
   modal.id = 'selfie-modal';
@@ -6817,7 +6881,7 @@ function renderProfile(skipFetch){
     +'</div>'
     +(CU.aadhaarVerified
       ? '<div class="prow"><span style="color:var(--green);font-size:.85rem">✅ Aadhaar Verified</span><span style="color:var(--text);font-size:.82rem">'+(CU.aadhaarNumber||'')+'</span></div>'
-      : '<div class="prow"><span style="color:var(--gold);font-size:.85rem">⏳ Aadhaar verification coming soon</span></div>')
+      : '<button class="btn-primary" onclick="startAadhaarVerification()" style="width:100%">📱 Verify Aadhaar via QR →</button>')
     +'</div>'
     +'<div class="pcard" style="margin-bottom:14px" id="bank-accounts-card">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
