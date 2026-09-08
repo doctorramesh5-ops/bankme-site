@@ -6942,6 +6942,24 @@ function renderProfile(skipFetch){
     +'</select>'
     +'<label class="flabel">Certificate / License Number</label>'
     +'<input class="finp" id="f-licenseno" placeholder="Enter certificate number" value="'+(CU.licenseNo||'')+'"/>'
+    +'<label class="flabel">Upload License / Certificate Document</label>'
+    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-licensedoc\').click()">'
+    +'<div id="license-doc-preview">'
+    +(CU.licenseDoc
+      ? '<img src="'+CU.licenseDoc+'" style="max-width:100%;max-height:120px;border-radius:6px"/>'
+      : '<div><div style="font-size:1.5rem;margin-bottom:4px">📄</div><div style="font-size:.72rem;color:var(--muted2)">Tap to upload license/certificate (photo or PDF)</div></div>')
+    +'</div>'
+    +'</div>'
+    +'<input type="file" id="f-licensedoc" accept="image/*,application/pdf" style="display:none" onchange="previewPhoto(this,\'license-doc-preview\',\'licenseDoc\')"/>'
+    +'<label class="flabel">Upload License / Certificate Document</label>'
+    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-licensedoc\').click()">'
+    +'<div id="license-doc-preview">'
+    +(CU.licenseDoc
+      ? '<img src="'+CU.licenseDoc+'" style="max-width:100%;max-height:120px;border-radius:6px"/>'
+      : '<div><div style="font-size:1.5rem;margin-bottom:4px">📄</div><div style="font-size:.72rem;color:var(--muted2)">Tap to upload license/certificate (photo or PDF)</div></div>')
+    +'</div>'
+    +'</div>'
+    +'<input type="file" id="f-licensedoc" accept="image/*,application/pdf" style="display:none" onchange="previewPhoto(this,\'license-doc-preview\',\'licenseDoc\')"/>'
     +'<label class="flabel">Shop Address</label>'
     +'<textarea class="finp" id="f-address" placeholder="Full shop address" rows="2" style="resize:none">'+(CU.shopAddress||'')+'</textarea>'
     +'<label class="flabel">Google Maps Link</label>'
@@ -7086,11 +7104,17 @@ function toggleShopEdit(){
 function previewPhoto(input, previewId, field){
   var file=input.files[0];
   if(!file) return;
-  if(file.size>2*1024*1024){ toast('Photo too large. Max 2MB','e'); return; }
+  if(file.size>2*1024*1024){ toast('File too large. Max 2MB','e'); return; }
   var reader=new FileReader();
   reader.onload=function(e){
     var prev=document.getElementById(previewId);
-    if(prev) prev.innerHTML='<img src="'+e.target.result+'" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-top:4px"/>';
+    if(prev){
+      if(file.type === 'application/pdf'){
+        prev.innerHTML = '<div style="padding:12px"><div style="font-size:1.5rem">📄</div><div style="font-size:.75rem;color:var(--green);margin-top:4px">✅ '+file.name+' uploaded</div></div>';
+      } else {
+        prev.innerHTML='<img src="'+e.target.result+'" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-top:4px"/>';
+      }
+    }
     if(!CU._tempPhotos) CU._tempPhotos={};
     CU._tempPhotos[field]=e.target.result;
   };
@@ -7146,6 +7170,7 @@ async function saveShopDetails(){
   if(CU._tempPhotos){
     if(CU._tempPhotos.shopFrontPhoto) updates.shopFrontPhoto=CU._tempPhotos.shopFrontPhoto;
     if(CU._tempPhotos.shopBoardPhoto) updates.shopBoardPhoto=CU._tempPhotos.shopBoardPhoto;
+    if(CU._tempPhotos.licenseDoc) updates.licenseDoc=CU._tempPhotos.licenseDoc;
   }
 
   // Save to backend (MongoDB)
