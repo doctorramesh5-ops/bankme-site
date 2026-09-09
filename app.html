@@ -6831,6 +6831,23 @@ function renderProfile(skipFetch){
           CU.gender = d.gender;
           if(d.name) CU.name = d.name;
           if(d.avatarUrl) CU.avatarUrl = d.avatarUrl;
+          CU.address = d.address;
+          CU.aadhaarVerified = d.aadhaarVerified;
+          CU.aadhaarNumber = d.aadhaarNumber;
+          CU.shopName = d.shopName;
+          CU.bizCert = d.bizCert;
+          CU.licenseNo = d.licenseNo;
+          CU.shopAddress = d.shopAddress;
+          CU.mapsLink = d.mapsLink;
+          CU.shopGeoLat = d.shopGeoLat;
+          CU.shopGeoLng = d.shopGeoLng;
+          CU.shopFrontPhoto = d.shopFrontPhoto;
+          CU.shopFrontPhotoLat = d.shopFrontPhotoLat;
+          CU.shopFrontPhotoLng = d.shopFrontPhotoLng;
+          CU.shopBoardPhoto = d.shopBoardPhoto;
+          CU.shopBoardPhotoLat = d.shopBoardPhotoLat;
+          CU.shopBoardPhotoLng = d.shopBoardPhotoLng;
+          CU.licenseDoc = d.licenseDoc;
           renderProfile(true); // re-render with fresh data, skip re-fetching
         }
       })
