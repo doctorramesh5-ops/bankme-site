@@ -6918,6 +6918,9 @@ function renderProfile(skipFetch){
     ].map(function(r){
       return '<div class="prow"><span style="color:var(--muted2);font-size:.82rem">'+r[0]+'</span><span style="color:var(--text);font-weight:500;font-size:.82rem;text-align:right;max-width:55%">'+r[1]+'</span></div>';
     }).join('')
+    +(CU.shopGeoLat && CU.shopGeoLng
+      ? '<div style="margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid var(--border)"><iframe width="100%" height="160" frameborder="0" style="border:0;display:block" src="https://maps.google.com/maps?q='+CU.shopGeoLat+','+CU.shopGeoLng+'&z=16&output=embed" allowfullscreen></iframe></div>'
+      : '')
     // Photo thumbnails
     +'<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
     +'<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">'
@@ -6966,22 +6969,20 @@ function renderProfile(skipFetch){
     +'<input class="finp" id="f-maps" placeholder="https://maps.google.com/..." value="'+(CU.mapsLink||'')+'"/>'
     +'<button type="button" onclick="captureShopGeoTag()" style="width:100%;margin-bottom:6px;padding:9px;font-size:.8rem;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);border-radius:8px;cursor:pointer">📍 Get Current Shop Location</button>'
     +'<div id="geo-status" style="font-size:.72rem;color:var(--muted2);text-align:center;margin-bottom:10px">'+(CU.shopGeoLat?('✅ Location on file: '+CU.shopGeoLat.toFixed(5)+', '+CU.shopGeoLng.toFixed(5)):'Location not yet captured')+'</div>'
-    +'<label class="flabel">Shop Front Photo</label>'
-    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-shopfront\').click()">'
+    +'<label class="flabel">Shop Front Photo (with location stamp)</label>'
+    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="openGeoCamera(\'shopFrontPhoto\',\'front-preview\')">'
     +'<div style="font-size:1.5rem;margin-bottom:4px">🏪</div>'
-    +'<div style="font-size:.78rem;color:var(--muted2)">Click to upload shop front photo</div>'
-    +'<div style="font-size:.68rem;color:var(--muted)">JPG, PNG up to 2MB</div>'
-    +'<div id="front-preview" style="margin-top:8px"></div>'
+    +'<div style="font-size:.78rem;color:var(--muted2)">Tap to take shop front photo</div>'
+    +'<div style="font-size:.68rem;color:var(--muted)">Camera only — GPS location auto-stamped</div>'
+    +'<div id="front-preview" style="margin-top:8px">'+(CU.shopFrontPhoto?'<img src="'+CU.shopFrontPhoto+'" style="max-width:100%;max-height:120px;border-radius:8px"/>':'')+'</div>'
     +'</div>'
-    +'<input type="file" id="f-shopfront" accept="image/*" style="display:none" onchange="previewPhoto(this,\'front-preview\',\'shopFrontPhoto\')"/>'
-    +'<label class="flabel">Advertisement Board Photo</label>'
-    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-shopboard\').click()">'
+    +'<label class="flabel">Advertisement Board Photo (with location stamp)</label>'
+    +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="openGeoCamera(\'shopBoardPhoto\',\'board-preview\')">'
     +'<div style="font-size:1.5rem;margin-bottom:4px">📢</div>'
-    +'<div style="font-size:.78rem;color:var(--muted2)">Click to upload advertisement board photo</div>'
-    +'<div style="font-size:.68rem;color:var(--muted)">JPG, PNG up to 2MB</div>'
-    +'<div id="board-preview" style="margin-top:8px"></div>'
+    +'<div style="font-size:.78rem;color:var(--muted2)">Tap to take advertisement board photo</div>'
+    +'<div style="font-size:.68rem;color:var(--muted)">Camera only — GPS location auto-stamped</div>'
+    +'<div id="board-preview" style="margin-top:8px">'+(CU.shopBoardPhoto?'<img src="'+CU.shopBoardPhoto+'" style="max-width:100%;max-height:120px;border-radius:8px"/>':'')+'</div>'
     +'</div>'
-    +'<input type="file" id="f-shopboard" accept="image/*" style="display:none" onchange="previewPhoto(this,\'board-preview\',\'shopBoardPhoto\')"/>'
     +'<div style="display:flex;gap:8px;margin-top:8px">'
     +'<button onclick="saveShopDetails()" class="btn-primary" style="flex:1">Save Shop Details →</button>'
     +'<button onclick="toggleShopEdit()" class="btn-outline" style="width:auto;padding:11px 16px">Cancel</button>'
@@ -7121,6 +7122,92 @@ function previewPhoto(input, previewId, field){
   reader.readAsDataURL(file);
 }
 
+function openGeoCamera(fieldName, previewId){
+  var modal = document.createElement('div');
+  modal.id = 'geocam-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:var(--bg1);border-radius:16px;padding:16px;max-width:380px;width:100%;text-align:center">'
+    +'<div style="font-family:var(--font-head);font-weight:700;margin-bottom:10px;color:var(--text)">📷 Capture Photo</div>'
+    +'<div style="position:relative;border-radius:12px;overflow:hidden;background:#000">'
+    +'<video id="geocam-video" autoplay playsinline style="width:100%;display:block"></video>'
+    +'<canvas id="geocam-canvas" style="display:none"></canvas>'
+    +'</div>'
+    +'<div id="geocam-status" style="font-size:.72rem;color:var(--muted2);margin:10px 0">📍 Getting your location...</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="closeGeoCamera()" class="btn-outline" style="flex:1;padding:11px">Cancel</button>'
+    +'<button onclick="captureGeoPhoto(\''+fieldName+'\',\''+previewId+'\')" id="geocam-capture-btn" class="btn-primary" style="flex:1;padding:11px" disabled>Capture</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(modal);
+
+  window._geocamLat = null; window._geocamLng = null;
+  navigator.geolocation.getCurrentPosition(function(pos){
+    window._geocamLat = pos.coords.latitude;
+    window._geocamLng = pos.coords.longitude;
+    var s = document.getElementById('geocam-status');
+    if(s) s.textContent = '✅ Location locked: ' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5);
+    var btn = document.getElementById('geocam-capture-btn');
+    if(btn) btn.disabled = false;
+  }, function(err){
+    var s = document.getElementById('geocam-status');
+    if(s) s.textContent = '⚠️ Location required: ' + err.message;
+  }, { enableHighAccuracy: true, timeout: 10000 });
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(stream){
+      window._geocamStream = stream;
+      document.getElementById('geocam-video').srcObject = stream;
+    })
+    .catch(function(e){
+      var s = document.getElementById('geocam-status');
+      if(s) s.textContent = '⚠️ Camera access denied: ' + e.message;
+    });
+}
+
+function closeGeoCamera(){
+  if(window._geocamStream){
+    window._geocamStream.getTracks().forEach(function(t){ t.stop(); });
+    window._geocamStream = null;
+  }
+  var modal = document.getElementById('geocam-modal');
+  if(modal) modal.remove();
+}
+
+function captureGeoPhoto(fieldName, previewId){
+  var video = document.getElementById('geocam-video');
+  var canvas = document.getElementById('geocam-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  var ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // Stamp GPS coordinates + timestamp onto the photo
+  var lat = window._geocamLat, lng = window._geocamLng;
+  var stampText = (lat && lng) ? ('📍 ' + lat.toFixed(6) + ', ' + lng.toFixed(6)) : 'Location unavailable';
+  var timeText = new Date().toLocaleString('en-IN');
+  var bandHeight = Math.max(50, canvas.height * 0.08);
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.fillRect(0, canvas.height - bandHeight, canvas.width, bandHeight);
+  ctx.fillStyle = '#fff';
+  ctx.font = (bandHeight * 0.3) + 'px sans-serif';
+  ctx.fillText(stampText, 12, canvas.height - bandHeight * 0.55);
+  ctx.fillText(timeText, 12, canvas.height - bandHeight * 0.15);
+
+  var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+  if(!CU._tempPhotos) CU._tempPhotos = {};
+  CU._tempPhotos[fieldName] = dataUrl;
+  CU._tempPhotos[fieldName + 'Lat'] = lat;
+  CU._tempPhotos[fieldName + 'Lng'] = lng;
+
+  var prev = document.getElementById(previewId);
+  if(prev) prev.innerHTML = '<img src="'+dataUrl+'" style="max-width:100%;max-height:120px;border-radius:8px"/>';
+
+  closeGeoCamera();
+  toast('✅ Photo captured with location stamp', 's');
+}
+
 function captureShopGeoTag(){
   var statusEl = document.getElementById('geo-status');
   if(!navigator.geolocation){
@@ -7169,7 +7256,11 @@ async function saveShopDetails(){
   // Add photos if uploaded
   if(CU._tempPhotos){
     if(CU._tempPhotos.shopFrontPhoto) updates.shopFrontPhoto=CU._tempPhotos.shopFrontPhoto;
+    if(CU._tempPhotos.shopFrontPhotoLat) updates.shopFrontPhotoLat=CU._tempPhotos.shopFrontPhotoLat;
+    if(CU._tempPhotos.shopFrontPhotoLng) updates.shopFrontPhotoLng=CU._tempPhotos.shopFrontPhotoLng;
     if(CU._tempPhotos.shopBoardPhoto) updates.shopBoardPhoto=CU._tempPhotos.shopBoardPhoto;
+    if(CU._tempPhotos.shopBoardPhotoLat) updates.shopBoardPhotoLat=CU._tempPhotos.shopBoardPhotoLat;
+    if(CU._tempPhotos.shopBoardPhotoLng) updates.shopBoardPhotoLng=CU._tempPhotos.shopBoardPhotoLng;
     if(CU._tempPhotos.licenseDoc) updates.licenseDoc=CU._tempPhotos.licenseDoc;
   }
 
