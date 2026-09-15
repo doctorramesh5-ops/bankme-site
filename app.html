@@ -6577,9 +6577,16 @@ function startAadhaarVerification(){
 }
 
 var _aadhaarPollInterval = null;
+var _aadhaarPollAttempts = 0;
 function startAadhaarStatusPoll(){
   clearInterval(_aadhaarPollInterval);
+  _aadhaarPollAttempts = 0;
   _aadhaarPollInterval = setInterval(function(){
+    _aadhaarPollAttempts++;
+    if(_aadhaarPollAttempts > 30){ // stop after ~2 minutes
+      clearInterval(_aadhaarPollInterval);
+      return;
+    }
     fetch(BACKEND_URL + '/aadhaar/fetch-result', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -6595,14 +6602,18 @@ function startAadhaarStatusPoll(){
               CU.aadhaarVerified = true;
               CU.aadhaarNumber = k.aadhaarNumber;
               if(k.address) CU.address = k.address;
+              if(k.name) CU.name = k.name;
+              if(k.dob) CU.dob = k.dob;
+              if(k.gender) CU.gender = k.gender;
               closeAadhaarModal();
               renderProfile(true);
               toast('✅ Aadhaar verified successfully!', 's');
             });
         }
+        // if not yet successful (session pending), keep polling silently
       })
       .catch(function(){});
-  }, 4000); // check every 4 seconds
+  }, 4000); // check every 4 seconds, up to ~2 minutes
 }
 
 function closeAadhaarModal(){
