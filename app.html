@@ -6560,13 +6560,14 @@ function startAadhaarVerification(){
     var statusEl = document.getElementById('aadhaar-status');
     var qrEl = document.getElementById('aadhaar-qr-container');
     if(!statusEl || !qrEl) return;
-    if(d && d.success && d.data && d.data.data && d.data.data.qrCode){
-      statusEl.innerHTML = 'Open <b>mAadhaar app</b> on your phone and scan this QR code';
-      qrEl.innerHTML = '<img src="data:image/png;base64,'+d.data.data.qrCode+'" style="width:200px;height:200px;border-radius:8px"/>';
+    var authUrl = d && d.data && d.data.data && d.data.data.authorizationUrl;
+    if(d && d.success && authUrl){
+      statusEl.innerHTML = 'Click below to verify your Aadhaar via DigiLocker';
+      qrEl.innerHTML = '<button class="btn-primary" onclick="window.location.href=\''+authUrl+'\'" style="width:100%;padding:12px">🆔 Continue to DigiLocker →</button>';
       window._aadhaarPollPhone = CU.phone;
       startAadhaarStatusPoll();
     } else {
-      statusEl.textContent = '⚠️ ' + (d.error && d.error.message ? d.error.message : 'Could not generate QR code. Please try again.');
+      statusEl.textContent = '⚠️ ' + (d.error && d.error.message ? d.error.message : 'Could not start verification. Please try again.');
     }
   })
   .catch(function(){
