@@ -7164,10 +7164,14 @@ function verifyBizCert(){
     btn.disabled = false; btn.textContent = 'Verify';
     var result = d.data && (d.data.kycResult || d.data.data);
     if(d.success && result){
-      var legalName = result.legalName || result.entityName || result.enterpriseName || '';
+      var legalName = result.legalName || result.entityName || result.enterpriseName || result.tradeName || '';
       CU.bizVerified = true;
       CU.bizVerifiedLegalName = legalName;
       statusEl.innerHTML = '<span style="color:var(--green)">✅ Verified: '+legalName+'</span>';
+      if(legalName){
+        var shopNameInput = document.getElementById('f-shopname');
+        if(shopNameInput) shopNameInput.value = legalName;
+      }
       toast('✅ ' + certType + ' verified successfully', 's');
     } else {
       statusEl.innerHTML = '<span style="color:var(--danger)">❌ Verification failed. Please check the number and try again.</span>';
