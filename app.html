@@ -6982,7 +6982,11 @@ function renderProfile(skipFetch){
     +'<option '+(CU.bizCert==='IEC'?'selected':'')+' value="IEC">Import Export Code (IEC)</option>'
     +'</select>'
     +'<label class="flabel">Certificate / License Number</label>'
-    +'<input class="finp" id="f-licenseno" placeholder="Enter certificate number" value="'+(CU.licenseNo||'')+'"/>'
+    +'<div style="display:flex;gap:8px">'
+    +'<input class="finp" id="f-licenseno" placeholder="Enter certificate number" value="'+(CU.licenseNo||'')+'" style="flex:1;margin-bottom:0"/>'
+    +'<button type="button" onclick="verifyBizCert()" id="bizverify-btn" style="white-space:nowrap;padding:0 16px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);color:var(--rtai);border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600">Verify</button>'
+    +'</div>'
+    +'<div id="bizverify-status" style="font-size:.75rem;margin:6px 0 10px">'+(CU.bizVerified?'<span style="color:var(--green)">✅ Verified: '+(CU.bizVerifiedLegalName||CU.shopName||'')+'</span>':'')+'</div>'
     +'<label class="flabel">Upload License / Certificate Document</label>'
     +'<div style="border:1px dashed var(--border2);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;cursor:pointer" onclick="document.getElementById(\'f-licensedoc\').click()">'
     +'<div id="license-doc-preview">'
@@ -7129,6 +7133,52 @@ function filterTxns(){
 // ══════════════════════════════════════
 // SHOP DETAILS FUNCTIONS
 // ══════════════════════════════════════
+var BIZCERT_TO_DOCTYPE = { 'GST': 'GSTIN', 'MSME': 'UDYAM', 'FSSAI': 'FSSAI' };
+
+function verifyBizCert(){
+  var certType = document.getElementById('f-bizcert').value;
+  var idNumber = document.getElementById('f-licenseno').value.trim();
+  var statusEl = document.getElementById('bizverify-status');
+  var btn = document.getElementById('bizverify-btn');
+
+  var docType = BIZCERT_TO_DOCTYPE[certType];
+  if(!docType){
+    statusEl.innerHTML = '<span style="color:var(--gold)">⚠️ Real-time verification not available for this certificate type — upload the document below instead.</span>';
+    return;
+  }
+  if(!idNumber){
+    statusEl.innerHTML = '<span style="color:var(--danger)">Please enter the certificate number first</span>';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  statusEl.innerHTML = '<span style="color:var(--muted2)">🔍 Verifying with government registry...</span>';
+
+  fetch(BACKEND_URL + '/business/verify', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: CU.phone, documentType: docType, idNumber: idNumber })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    btn.disabled = false; btn.textContent = 'Verify';
+    var result = d.data && (d.data.kycResult || d.data.data);
+    if(d.success && result){
+      var legalName = result.legalName || result.entityName || result.enterpriseName || '';
+      CU.bizVerified = true;
+      CU.bizVerifiedLegalName = legalName;
+      statusEl.innerHTML = '<span style="color:var(--green)">✅ Verified: '+legalName+'</span>';
+      toast('✅ ' + certType + ' verified successfully', 's');
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--danger)">❌ Verification failed. Please check the number and try again.</span>';
+    }
+  })
+  .catch(function(){
+    btn.disabled = false; btn.textContent = 'Verify';
+    statusEl.innerHTML = '<span style="color:var(--danger)">⚠️ Network error. Please try again.</span>';
+  });
+}
+
 function toggleShopEdit(){
   var form=document.getElementById('shop-form');
   var view=document.getElementById('shop-view');
