@@ -7172,6 +7172,13 @@ function verifyBizCert(){
         var shopNameInput = document.getElementById('f-shopname');
         if(shopNameInput) shopNameInput.value = legalName;
       }
+      if(d.approval && d.approval.certAddress){
+        var addrInput = document.getElementById('f-address');
+        if(addrInput) addrInput.value = d.approval.certAddress;
+      }
+      if(d.approval && d.approval.needsApproval){
+        statusEl.innerHTML += '<br><span style="color:var(--gold)">⚠️ Shop location doesn\'t match certificate address (distance: ' + Math.round(d.approval.distanceMeters||0) + 'm). Admin approval required before services activate.</span>';
+      }
       toast('✅ ' + certType + ' verified successfully', 's');
     } else {
       statusEl.innerHTML = '<span style="color:var(--danger)">❌ Verification failed. Please check the number and try again.</span>';
