@@ -6580,16 +6580,25 @@ var _aadhaarPollInterval = null;
 function startAadhaarStatusPoll(){
   clearInterval(_aadhaarPollInterval);
   _aadhaarPollInterval = setInterval(function(){
-    fetch(BACKEND_URL + '/user/' + CU.phone + '/kyc-status')
+    fetch(BACKEND_URL + '/aadhaar/fetch-result', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: CU.phone })
+    })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        if(d && d.success && d.aadhaarVerified){
+        if(d && d.success && (d.verified || d.alreadyVerified)){
           clearInterval(_aadhaarPollInterval);
-          CU.aadhaarVerified = true;
-          CU.aadhaarNumber = d.aadhaarNumber;
-          closeAadhaarModal();
-          renderProfile(true);
-          toast('✅ Aadhaar verified successfully!', 's');
+          fetch(BACKEND_URL + '/user/' + CU.phone + '/kyc-status')
+            .then(function(r){ return r.json(); })
+            .then(function(k){
+              CU.aadhaarVerified = true;
+              CU.aadhaarNumber = k.aadhaarNumber;
+              if(k.address) CU.address = k.address;
+              closeAadhaarModal();
+              renderProfile(true);
+              toast('✅ Aadhaar verified successfully!', 's');
+            });
         }
       })
       .catch(function(){});
