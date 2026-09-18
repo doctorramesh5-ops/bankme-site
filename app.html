@@ -6563,6 +6563,7 @@ function startAadhaarVerification(){
     var authUrl = d && d.data && d.data.data && d.data.data.authorizationUrl;
     if(d && d.success && authUrl){
       statusEl.innerHTML = 'Click below to verify your Aadhaar via DigiLocker';
+      localStorage.setItem('bankme_aadhaar_pending', CU.phone); // survives the page navigation to DigiLocker
       qrEl.innerHTML = '<button class="btn-primary" onclick="window.location.href=\''+authUrl+'\'" style="width:100%;padding:12px">🆔 Continue to DigiLocker →</button>';
       window._aadhaarPollPhone = CU.phone;
       startAadhaarStatusPoll();
@@ -6772,6 +6773,38 @@ var INDIAN_BANKS = [
   "NKGSB Co-operative Bank","Kalyan Janata Sahakari Bank","Punjab & Maharashtra Co-operative Bank"
 ].sort();
 
+// Auto-resume Aadhaar verification check if the user was mid-flow before navigating to DigiLocker
+function checkPendingAadhaarOnLoad(){
+  var pendingPhone = localStorage.getItem('bankme_aadhaar_pending');
+  if(pendingPhone && CU && CU.phone === pendingPhone){
+    localStorage.removeItem('bankme_aadhaar_pending');
+    // Give the callback a moment to finish processing, then check
+    setTimeout(function(){
+      fetch(BACKEND_URL + '/aadhaar/fetch-result', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ phone: pendingPhone })
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.success && (d.verified || d.alreadyVerified)){
+          fetch(BACKEND_URL + '/user/' + pendingPhone + '/kyc-status')
+            .then(function(r){ return r.json(); })
+            .then(function(k){
+              CU.aadhaarVerified = true;
+              CU.aadhaarNumber = k.aadhaarNumber;
+              if(k.address) CU.address = k.address;
+              if(k.name) CU.name = k.name;
+              renderProfile(true);
+              toast('✅ Aadhaar verified successfully!', 's');
+            });
+        }
+      })
+      .catch(function(){});
+    }, 1500);
+  }
+}
+
 function toggleBankForm(){
   var f = document.getElementById('bank-form');
   f.style.display = f.style.display==='none' ? 'block' : 'none';
@@ -6882,6 +6915,7 @@ function renderProfile(skipFetch){
       .catch(function(){});
   }
   setTimeout(loadBankAccounts, 100);
+  checkPendingAadhaarOnLoad();
 
   el.innerHTML=
     // Header
