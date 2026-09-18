@@ -6788,8 +6788,15 @@ function loadBankAccounts(){
         return;
       }
       el.innerHTML = d.accounts.map(function(a){
-        var statusColor = a.verificationStatus==='verified' ? 'var(--green)' : (a.verificationStatus==='rejected' ? 'var(--red)' : 'var(--gold)');
-        var statusLabel = a.verificationStatus==='verified' ? '✅ Verified' : (a.verificationStatus==='rejected' ? '❌ Rejected' : '⏳ Pending Verification');
+        var statusMap = {
+          verified: ['✅ Verified', 'var(--green)'],
+          rejected: ['❌ Rejected', 'var(--red)'],
+          name_mismatch: ['⚠️ Name Mismatch', 'var(--gold)'],
+          pending: ['⏳ Pending Verification', 'var(--muted2)'],
+        };
+        var st = statusMap[a.verificationStatus] || statusMap.pending;
+        var statusLabel = st[0];
+        var statusColor = st[1];
         return '<div class="prow" style="align-items:flex-start"><div><div style="font-weight:600;font-size:.85rem">'+(a.bankName||'Bank')+'</div><div style="font-size:.72rem;color:var(--muted2)">A/C ...'+String(a.accountNumber||'').slice(-4)+' · '+(a.ifsc||'')+'</div></div><span style="font-size:.68rem;font-weight:700;color:'+statusColor+'">'+statusLabel+'</span></div>';
       }).join('');
     })
