@@ -5651,15 +5651,23 @@ async function processTransfer(){
   if(amount<1){ toast('Enter valid amount','e'); return; }
   if(amount>(CU.wallet||0)){ toast('Insufficient balance','e'); return; }
   var panel=document.getElementById('wallet-action-panel');
-  if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(0,212,170,.2);border-top-color:var(--rtai);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--rtai)">RTAI verifying transfer…</p></div>';
-  await new Promise(function(r){setTimeout(r,1200);});
+  if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(0,212,170,.2);border-top-color:var(--rtai);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--rtai)">Verifying transfer…</p></div>';
+
+  var res = await fetch(BACKEND_URL + '/wallet/transfer', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ fromPhone: CU.phone, toPhone: mobile, amount: amount })
+  });
+  var xferData = await res.json();
+  if(!xferData.success){
+    if(panel) panel.innerHTML='<div style="background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:12px;padding:16px;text-align:center"><div style="color:var(--red);font-weight:700">⚠️ '+(xferData.message||'Transfer failed')+'</div></div>';
+    toast(xferData.message || 'Transfer failed', 'e');
+    return;
+  }
   var txnId=genId();
-  var txn={id:txnId,service:'wallet',title:'Transfer to '+mobile,amount:amount,type:'debit',date:new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),txnId:txnId,status:'success',rtaiVerified:true,remarks:remarks};
-  CU.wallet=Math.max(0,(CU.wallet||0)-amount);
-  TXN_HISTORY.push(txn);
+  CU.wallet = xferData.newBalance;
   document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet);
-  try{if(db&&CU.uid){await db.collection('bankme_users').doc(CU.uid).update({wallet:CU.wallet,txns:(typeof firebase!=="undefined"&&firebase.firestore?firebase.firestore.FieldValue.arrayUnion(txn):txn)});}}catch(e){}
-  if(panel) panel.innerHTML='<div style="background:rgba(0,212,170,.1);border:1px solid var(--rtai);border-radius:12px;padding:16px;text-align:center"><div style="font-size:1.8rem;margin-bottom:6px">✅</div><div style="color:var(--rtai);font-weight:700">₹'+fmtN(amount)+' Transferred!</div><div style="font-size:.75rem;color:var(--muted2);margin-top:4px">To: +91 '+mobile+' · TXN: '+txnId+'</div><button onclick="renderWallet()" style="margin-top:10px;padding:8px 18px;border-radius:9px;background:var(--rtai);border:none;color:#000;cursor:pointer;font-weight:700;font-size:.82rem">Done ✓</button></div>';
+  if(panel) panel.innerHTML='<div style="background:rgba(0,212,170,.1);border:1px solid var(--rtai);border-radius:12px;padding:16px;text-align:center"><div style="font-size:1.8rem;margin-bottom:6px">✅</div><div style="color:var(--rtai);font-weight:700">₹'+fmtN(amount)+' Transferred!</div><div style="font-size:.75rem;color:var(--muted2);margin-top:4px">To: '+(xferData.receiverName||('+91 '+mobile))+'</div><button onclick="renderWallet()" style="margin-top:10px;padding:8px 18px;border-radius:9px;background:var(--rtai);border:none;color:#000;cursor:pointer;font-weight:700;font-size:.82rem">Done ✓</button></div>';
   toast('₹'+fmtN(amount)+' transferred! ✅','s');
 }
 
