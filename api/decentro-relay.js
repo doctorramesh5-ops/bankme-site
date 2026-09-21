@@ -11,7 +11,8 @@ export default async function handler(req, res) {
   const { path, body } = req.body;
 
   try {
-    const response = await fetch('https://in.staging.decentro.tech/' + path, {
+    const targetUrl = path.startsWith('http') ? path : 'https://in.staging.decentro.tech/' + path;
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'client_id': req.headers['client_id'],
