@@ -1452,7 +1452,7 @@ function _handleOTPSuccess(mobile){
       phone: mobile,
       name: (u && u.name) || defaultProfile.name,
       email: (u && u.email) || '',
-      role: 'customer',
+      role: (u && u.role) || 'customer',
       wallet: (u && u.wallet) || 0,
       joined: nowStr(), txns: [],
       kyc: (u && u.kycStatus) || 'pending',
