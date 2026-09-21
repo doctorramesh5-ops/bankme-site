@@ -516,6 +516,14 @@ main{flex:1;overflow:auto}
             <input class="finp" id="si-gstnumber" placeholder="Enter registration number"/>
             <div style="font-size:.72rem;color:var(--muted2)">⚠️ White Label access is restricted to businesses with valid GST, LLP, or Pvt Ltd registration.</div>
           </div>
+          <label style="display:flex;align-items:flex-start;gap:8px;margin:14px 0;cursor:pointer">
+            <input type="checkbox" id="si-terms" style="margin-top:3px;flex-shrink:0"/>
+            <span style="font-size:.78rem;color:var(--muted2);line-height:1.4">
+              I agree to the <a href="https://bankme.co.in/terms" target="_blank" style="color:var(--rtai)">Terms &amp; Conditions</a>,
+              <a href="https://bankme.co.in/privacy-policy" target="_blank" style="color:var(--rtai)">Privacy Policy</a>, and
+              <a href="https://bankme.co.in/refund-policy" target="_blank" style="color:var(--rtai)">Refund Policy</a>
+            </span>
+          </label>
           <div class="ferr" id="si-err"></div>
           <button class="btn-primary" id="si-btn" onclick="doSignupStep1()" style="width:100%">Continue → Verify Mobile</button>
           <p style="text-align:center;margin-top:10px;font-size:.8rem;color:var(--muted2)">
@@ -1586,6 +1594,10 @@ function toggleWLFields(){
 }
 
 function doSignupStep1(){
+  if(!document.getElementById('si-terms').checked){
+    document.getElementById('si-err').textContent = 'Please agree to the Terms, Privacy Policy, and Refund Policy to continue';
+    return;
+  }
   var name  = document.getElementById('si-name').value.trim();
   var phone = document.getElementById('si-phone').value.trim();
   var email = document.getElementById('si-email').value.trim();
