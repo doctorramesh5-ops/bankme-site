@@ -2005,10 +2005,21 @@ async function renderAdminDashboard(){
     +'<div id="ad-content"></div>';
   var allUsers=[];
   try{
-    var snap=await db.collection('bankme_users').get();
-    snap.forEach(function(d){var u=d.data();u.uid=d.id;allUsers.push(u);});
+    var res = await fetch(BACKEND_URL + '/admin/users');
+    var data = await res.json();
+    if(data.success && data.users){
+      allUsers = data.users.map(function(u){
+        return Object.assign({}, u, {
+          uid: u._id,
+          role: u.role || 'customer',
+          kyc: u.kycStatus === 'verified' ? 'verified' : 'pending',
+          joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-IN') : '-',
+          txns: [],
+        });
+      });
+    }
   }catch(e){
-    allUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,joined:'Apr 2025',kyc:i<3?'verified':'pending',txns:[],rtaiScore:80+i,commissionEarned:5000*i});});
+    console.log('Failed to load real users:', e);
   }
   renderAdminContent(allUsers);
 }
