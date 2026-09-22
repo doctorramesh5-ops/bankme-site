@@ -6007,21 +6007,6 @@ async function renderTxnHistory(){
     + '<div id="th-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:14px"></div>'
     + '<div id="th-list"></div>';
 
-  // Load network txns for admin/wl
-  if(isAdminWL){
-    try{
-      var snap = await db.collection('bankme_users').get();
-      var netTxns = [];
-      snap.forEach(function(d){
-        var u = d.data();
-        (u.txns||[]).forEach(function(t){
-          netTxns.push(Object.assign({},t,{userName:u.name,userRole:u.role,userPhone:u.phone}));
-        });
-      });
-      window._allNetworkTxns = netTxns;
-    }catch(e){ window._allNetworkTxns=[]; }
-  }
-
   applyTHFilters();
 }
 
