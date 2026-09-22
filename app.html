@@ -5896,9 +5896,26 @@ async function renderTxnHistory(){
   var role=CU.role;
   var isAdminWL=['admin','whitelabel'].indexOf(role)>=0;
 
+  // Load REAL transaction data from backend
+  try{
+    if(isAdminWL){
+      var res = await fetch(BACKEND_URL + '/admin/transactions?role=all&period=all');
+      var data = await res.json();
+      window._allNetworkTxns = (data.transactions||[]).map(function(t){
+        return { service: t.mainService, subService: t.subService, amount: t.amount, type: t.type, date: t.createdAt, userName: t.userName, userRole: t.userRole, status: t.status };
+      });
+    } else {
+      var res2 = await fetch(BACKEND_URL + '/user/' + CU.phone + '/transactions');
+      var data2 = await res2.json();
+      TXN_HISTORY = (data2.transactions||[]).map(function(t){
+        return { service: t.mainService, subService: t.subService, amount: t.type==='credit'?t.amount:-t.amount, date: t.createdAt, status: t.status, title: (t.subService||'Transaction').replace(/_/g,' ') };
+      });
+    }
+  }catch(e){ console.log('Failed to load real transactions:', e); }
+
   // ── Sub-service map ──
   var SUB_SERVICES = {
-    wallet:    ['All','Add Money','Transfer','Withdraw','Refund'],
+    wallet:    ['All','Add Money','Payout','Transfer Sent','Transfer Received'],
     recharge:  ['All','Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
     bbps:      ['All','Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
     aeps:      ['All','Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
