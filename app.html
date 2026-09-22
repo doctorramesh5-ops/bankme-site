@@ -1183,6 +1183,15 @@ var _otpExpiry = 0;
 var CF_WORKER = 'https://bankme-otp.doctorramesh5.workers.dev';
 var BACKEND_URL = 'https://bankme-backend.onrender.com';
 
+// ── Authenticated fetch: automatically includes the session token ──
+function authFetch(url, options){
+  options = options || {};
+  options.headers = options.headers || {};
+  var token = localStorage.getItem('bankme_token');
+  if(token) options.headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, options);
+}
+
 function sendMsg91OTP(mobile, otp, onSuccess, onFail){
   var email = document.getElementById('li-email') ? document.getElementById('li-email').value.trim() : '';
   var url = CF_WORKER + '?action=send&phone=' + mobile;
@@ -1372,6 +1381,7 @@ function verifyOTP(){
     if(btn){ btn.textContent = 'Verify & Login →'; btn.disabled = false; }
     if(d && d.success && d.verified){
       clearInterval(_otpTimer);
+      if(d.token) localStorage.setItem('bankme_token', d.token);
       _handleOTPSuccess(_otpMobile);
     } else {
       err.textContent = d.message || 'Invalid OTP. Please try again.';
@@ -2016,7 +2026,7 @@ async function renderAdminDashboard(){
     +'<div id="ad-content"></div>';
   var allUsers=[];
   try{
-    var res = await fetch(BACKEND_URL + '/admin/users');
+    var res = await authFetch(BACKEND_URL + '/admin/users');
     var data = await res.json();
     if(data.success && data.users){
       allUsers = data.users.map(function(u){
@@ -2106,7 +2116,7 @@ async function generateNetworkTxnReport(){
 
   try{
     var params = new URLSearchParams({ role: role, period: period, mainService: mainService, subService: subService });
-    var res = await fetch(BACKEND_URL + '/admin/transactions?' + params.toString());
+    var res = await authFetch(BACKEND_URL + '/admin/transactions?' + params.toString());
     var data = await res.json();
 
     if(!data.success){
@@ -5586,7 +5596,7 @@ async function processAddMoney(){
   var panel=document.getElementById('wallet-action-panel');
   if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(16,185,129,.2);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--green)">Creating secure payment order…</p></div>';
 
-  fetch(BACKEND_URL + '/wallet/create-order', {
+  authFetch(BACKEND_URL + '/wallet/create-order', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ phone: CU.phone, amount: amount })
@@ -5610,7 +5620,7 @@ async function processAddMoney(){
         // Payment successful on Razorpay's side - now verify server-side
         if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(16,185,129,.2);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--green)">Verifying payment…</p></div>';
 
-        fetch(BACKEND_URL + '/wallet/verify-payment', {
+        authFetch(BACKEND_URL + '/wallet/verify-payment', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
@@ -5725,7 +5735,7 @@ async function processTransfer(){
   var panel=document.getElementById('wallet-action-panel');
   if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(0,212,170,.2);border-top-color:var(--rtai);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--rtai)">Verifying transfer…</p></div>';
 
-  var res = await fetch(BACKEND_URL + '/wallet/transfer', {
+  var res = await authFetch(BACKEND_URL + '/wallet/transfer', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ fromPhone: CU.phone, toPhone: mobile, amount: amount })
@@ -5910,7 +5920,7 @@ async function renderTxnHistory(){
   // Load REAL transaction data from backend
   try{
     if(isAdminWL){
-      var res = await fetch(BACKEND_URL + '/admin/transactions?role=all&period=all');
+      var res = await authFetch(BACKEND_URL + '/admin/transactions?role=all&period=all');
       var data = await res.json();
       window._allNetworkTxns = (data.transactions||[]).map(function(t){
         return { service: t.mainService, subService: t.subService, amount: t.amount, type: t.type, date: t.createdAt, userName: t.userName, userRole: t.userRole, status: t.status };
@@ -6998,7 +7008,7 @@ function toggleBankForm(){
 }
 
 function loadBankAccounts(){
-  fetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts')
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts')
     .then(function(r){ return r.json(); })
     .then(function(d){
       var el = document.getElementById('bank-accounts-list');
@@ -7040,7 +7050,7 @@ function submitBankAccount(){
   var btn = document.getElementById('bank-submit-btn');
   btn.disabled = true; btn.textContent = 'Verifying...';
 
-  fetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts', {
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ accountNumber: accno, ifsc: ifsc, bankName: bankName, accountType: isBusiness ? 'business' : 'personal' })
