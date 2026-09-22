@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BankMe Receipt</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 20px; background: #0a0e14; color: #e5e7eb; }
+  .card { background: #12161f; border: 1px solid #232838; border-radius: 16px; padding: 24px; text-align: center; }
+  .logo { height: 50px; margin-bottom: 10px; }
+  .sub { font-size: 11px; color: #9ca3af; margin: 2px 0; }
+  .amount { margin: 20px 0; }
+  .val { font-size: 32px; font-weight: 900; color: #10b981; }
+  .lbl { font-size: 13px; color: #9ca3af; text-transform: capitalize; }
+  .rows { text-align: left; border-top: 1px dashed #232838; padding-top: 14px; margin-top: 14px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .k { color: #9ca3af; }
+  .v { font-weight: 600; }
+  .footer { margin-top: 20px; padding-top: 14px; border-top: 1px dashed #232838; font-size: 10px; color: #6b7280; line-height: 1.6; }
+  .badge { display: inline-block; background: rgba(16,185,129,.15); color: #10b981; padding: 2px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; margin-top: 8px; }
+  .btns { display: flex; gap: 10px; margin-top: 16px; }
+  button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-print { background: rgba(16,185,129,.15); color: #10b981; border: 1px solid rgba(16,185,129,.3); }
+  .btn-share { background: #10b981; color: #000; }
+  #loading, #error { text-align: center; padding: 60px 20px; color: #9ca3af; }
+  @media print { body { background: #fff; color: #000; } .card { border: 1px solid #000; } .btns { display: none; } }
+</style>
+</head>
+<body>
+  <div id="loading">Loading receipt...</div>
+  <div id="error" style="display:none">Receipt not found.</div>
+  <div id="receipt" style="display:none"></div>
+
+<script>
+var params = new URLSearchParams(window.location.search);
+var txnId = params.get('id');
+var BACKEND_URL = "https://bankme-backend.onrender.com";
+
+if(!txnId){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('error').style.display='block';
+} else {
+  fetch(BACKEND_URL + "/public/receipt/" + txnId)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      document.getElementById('loading').style.display='none';
+      if(!d.success){
+        document.getElementById('error').style.display='block';
+        return;
+      }
+      var t = d.transaction;
+      var m = d.merchant || {};
+      var dateStr = new Date(t.createdAt).toLocaleString('en-IN');
+      var html = '<div class="card">'
+        + '<div class="sub" style="font-size:18px;font-weight:900;color:#10b981">BANKME</div>'
+        + '<div class="sub">PayPe Technologies · NPCI · RBI Authorised</div>'
+        + '<div class="sub" style="font-size:10px">Company GSTIN: 33AAMCP7960K1ZU</div>'
+        + '<div class="sub">' + (m.shopName || m.name || 'Customer') + '</div>'
+        + (m.shopAddress ? '<div class="sub">\ud83d\udccd ' + m.shopAddress + '</div>' : '')
+        + (m.licenseNo ? '<div class="sub">\ud83d\udcdc MSME/GST/Lic: ' + m.licenseNo + '</div>' : '')
+        + '<div class="amount">'
+        + '<div class="val">' + (t.type==='credit'?'+':'-') + '\u20b9' + Number(t.amount).toLocaleString('en-IN') + '</div>'
+        + '<div class="lbl">' + (t.subService||'Transaction').replace(/_/g,' ') + '</div>'
+        + '</div>'
+        + '<div class="rows">'
+        + '<div class="row"><span class="k">Service</span><span class="v">' + (t.mainService||'-') + '</span></div>'
+        + '<div class="row"><span class="k">Txn ID</span><span class="v" style="font-size:11px">' + t.txnId + '</span></div>'
+        + '<div class="row"><span class="k">Reference</span><span class="v" style="font-size:11px">' + (t.reference||'-') + '</span></div>'
+        + '<div class="row"><span class="k">Date & Time</span><span class="v">' + dateStr + '</span></div>'
+        + '<div class="row"><span class="k">Status</span><span class="v">' + (t.status==='success'?'\u2705 Success':t.status) + '</span></div>'
+        + '</div>'
+        + '<div class="footer">'
+        + 'PAYPE TECHNOLOGIES PVT LTD<br>'
+        + 'bankme.co.in | accounts@paype.co.in<br>'
+        + 'NPCI · BBPS · AEPS · UPI · RBI AUTHORISED<br>'
+        + '<span class="badge">\u2713 RTAI VERIFIED</span>'
+        + '</div>'
+        + '<div class="btns">'
+        + '<button class="btn-print" onclick="window.print()">\ud83d\udda8\ufe0f Print / PDF</button>'
+        + '<button class="btn-share" onclick="shareReceipt()">\ud83d\udce4 Share</button>'
+        + '</div>'
+        + '</div>';
+      document.getElementById('receipt').innerHTML = html;
+      document.getElementById('receipt').style.display='block';
+      window._shareText = 'BankMe Receipt\n' + (t.subService||'Transaction').replace(/_/g,' ') + '\n\u20b9' + t.amount + '\nTxn ID: ' + t.txnId + '\nDate: ' + dateStr;
+    })
+    .catch(function(){
+      document.getElementById('loading').style.display='none';
+      document.getElementById('error').style.display='block';
+    });
+}
+
+function shareReceipt(){
+  if(navigator.share){
+    navigator.share({title:'BankMe Receipt', text: window._shareText, url: window.location.href}).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(window._shareText + '\n' + window.location.href);
+    alert('Receipt link copied!');
+  }
+}
+</script>
+</body>
+</html>
