@@ -1078,6 +1078,13 @@ function rndId(){ return Math.random().toString(36).substr(2,6).toUpperCase(); }
 
 
 // Show login immediately on page load
+// Check for ?receipt=<id> URL param (from mobile app deep link)
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var receiptId = params.get('receipt');
+  if(receiptId) window._pendingReceiptId = receiptId;
+})();
+
 document.addEventListener('DOMContentLoaded', function(){
   document.getElementById('loading').style.display='none';
 
@@ -1959,8 +1966,12 @@ function showApp(){
   document.getElementById('nb-apikeys').style.display=(role==='admin')?'':'none';
   document.getElementById('nb-services').style.display=hasServices?'':'none';
   document.getElementById('nb-mynetwork').style.display=hasNetwork?'':'none';
-  goPage('dashboard');
-  toast('Welcome, '+CU.name.split(' ')[0]+'! \ud83d\udc4b','s');
+  if(window._pendingReceiptId){
+    goPage('txnhistory');
+  } else {
+    goPage('dashboard');
+    toast('Welcome, '+CU.name.split(' ')[0]+'! \ud83d\udc4b','s');
+  }
 }
 
 // ══════════════════════════════════════
@@ -6008,6 +6019,13 @@ async function renderTxnHistory(){
     + '<div id="th-list"></div>';
 
   applyTHFilters();
+
+  // Auto-open receipt if we arrived via a deep link (mobile app "View Full Receipt")
+  if(window._pendingReceiptId){
+    var pendingId = window._pendingReceiptId;
+    window._pendingReceiptId = null;
+    setTimeout(function(){ showInvoice(pendingId); }, 300);
+  }
 }
 
 function updateSubServices(){
