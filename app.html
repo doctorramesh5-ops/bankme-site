@@ -5908,7 +5908,7 @@ async function renderTxnHistory(){
       var res2 = await fetch(BACKEND_URL + '/user/' + CU.phone + '/transactions');
       var data2 = await res2.json();
       TXN_HISTORY = (data2.transactions||[]).map(function(t){
-        return { service: t.mainService, subService: t.subService, amount: t.type==='credit'?t.amount:-t.amount, date: t.createdAt, status: t.status, title: (t.subService||'Transaction').replace(/_/g,' ') };
+        return { id: t._id, txnId: t._id, service: t.mainService, subService: t.subService, amount: t.type==='credit'?t.amount:-t.amount, date: t.createdAt, status: t.status, title: (t.subService||'Transaction').replace(/_/g,' '), rtaiVerified: true };
       });
     }
   }catch(e){ console.log('Failed to load real transactions:', e); }
