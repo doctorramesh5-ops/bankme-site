@@ -6015,27 +6015,27 @@ function updateSubServices(){
   var subEl = document.getElementById('th-subsvc');
   if(!subEl) return;
   var SUB_SERVICES = {
-    wallet:     ['Add Money','Transfer','Withdraw','Refund'],
-    recharge:   ['Mobile Prepaid','Mobile Postpaid','DTH','Data Card'],
-    bbps:       ['Electricity','Water','Gas','Broadband','Loan EMI','Insurance','Municipal Tax'],
-    aeps:       ['Cash Withdrawal','Balance Enquiry','Mini Statement','Aadhaar Pay'],
-    dmt:        ['IMPS Transfer','NEFT Transfer','Account Verify'],
-    upicashin:  ['UPI Collect','QR Collection'],
-    upicashout: ['UPI Pay','UPI Transfer'],
-    cashin:     ['SBI','HDFC','Axis','ICICI','Fino','Paytm','Airtel','India Post'],
-    cashout:    ['SBI','HDFC','Axis','ICICI','Fino','Paytm','Airtel','India Post'],
-    creditcard: ['Card Issuance','Bill Payment','Card Upgrade','Block/Replace'],
-    cms:        ['Cash Pickup','Cash Delivery','ATM Replenishment','Vault Management','Cash in Transit'],
-    insurance:  ['Life Insurance','Health Insurance','Vehicle Insurance','Term Plan'],
-    loan:       ['Personal Loan','Home Loan','Vehicle Loan','Business Loan'],
-    pancard:    ['New PAN','PAN Reprint','PAN Correction'],
-    travel:     ['Flight Booking','Bus Booking','Hotel Booking','Train Booking'],
-    demat:      ['Demat Open','Trading Account'],
-    mutualfund: ['SIP Start','Lump Sum','Redemption'],
+    wallet:     [['add_money','Add Money'],['payout','Payout'],['transfer_sent','Transfer Sent'],['transfer_received','Transfer Received']],
+    recharge:   [['Mobile Prepaid','Mobile Prepaid'],['Mobile Postpaid','Mobile Postpaid'],['DTH','DTH'],['Data Card','Data Card']],
+    bbps:       [['Electricity','Electricity'],['Water','Water'],['Gas','Gas'],['Broadband','Broadband'],['Loan EMI','Loan EMI'],['Insurance','Insurance'],['Municipal Tax','Municipal Tax']],
+    aeps:       [['Cash Withdrawal','Cash Withdrawal'],['Balance Enquiry','Balance Enquiry'],['Mini Statement','Mini Statement'],['Aadhaar Pay','Aadhaar Pay']],
+    dmt:        [['IMPS Transfer','IMPS Transfer'],['NEFT Transfer','NEFT Transfer'],['Account Verify','Account Verify']],
+    upicashin:  [['UPI Collect','UPI Collect'],['QR Collection','QR Collection']],
+    upicashout: [['UPI Pay','UPI Pay'],['UPI Transfer','UPI Transfer']],
+    cashin:     [['SBI','SBI'],['HDFC','HDFC'],['Axis','Axis'],['ICICI','ICICI'],['Fino','Fino'],['Paytm','Paytm'],['Airtel','Airtel'],['India Post','India Post']],
+    cashout:    [['SBI','SBI'],['HDFC','HDFC'],['Axis','Axis'],['ICICI','ICICI'],['Fino','Fino'],['Paytm','Paytm'],['Airtel','Airtel'],['India Post','India Post']],
+    creditcard: [['Card Issuance','Card Issuance'],['Bill Payment','Bill Payment'],['Card Upgrade','Card Upgrade'],['Block/Replace','Block/Replace']],
+    cms:        [['Cash Pickup','Cash Pickup'],['Cash Delivery','Cash Delivery'],['ATM Replenishment','ATM Replenishment'],['Vault Management','Vault Management'],['Cash in Transit','Cash in Transit']],
+    insurance:  [['Life Insurance','Life Insurance'],['Health Insurance','Health Insurance'],['Vehicle Insurance','Vehicle Insurance'],['Term Plan','Term Plan']],
+    loan:       [['Personal Loan','Personal Loan'],['Home Loan','Home Loan'],['Vehicle Loan','Vehicle Loan'],['Business Loan','Business Loan']],
+    pancard:    [['New PAN','New PAN'],['PAN Reprint','PAN Reprint'],['PAN Correction','PAN Correction']],
+    travel:     [['Flight Booking','Flight Booking'],['Bus Booking','Bus Booking'],['Hotel Booking','Hotel Booking'],['Train Booking','Train Booking']],
+    demat:      [['Demat Open','Demat Open'],['Trading Account','Trading Account']],
+    mutualfund: [['SIP Start','SIP Start'],['Lump Sum','Lump Sum'],['Redemption','Redemption']],
   };
   var subs = SUB_SERVICES[svc] || [];
   subEl.innerHTML = '<option value="all">All Sub-Services</option>'
-    + subs.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('');
+    + subs.map(function(pair){ return '<option value="'+pair[0]+'">'+pair[1]+'</option>'; }).join('');
 }
 
 function clearTHFilters(){
