@@ -5,7 +5,6 @@ export const config = {
 
 export default async function handler(req, res) {
   try {
-    // GET requests: path comes from query string, no body, used for status checks
     if (req.method === 'GET') {
       const { path } = req.query;
       const targetUrl = path.startsWith('http') ? path : 'https://in.staging.decentro.tech/' + path;
@@ -20,21 +19,25 @@ export default async function handler(req, res) {
       return res.status(response.status).json(data);
     }
 
-    // POST requests: original behavior
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { path, body } = req.body;
+    const { path, body, headers: customHeaders } = req.body;
     const targetUrl = path.startsWith('http') ? path : 'https://in.staging.decentro.tech/' + path;
+
+    // If customHeaders provided, forward those exactly (generic passthrough mode)
+    // Otherwise, fall back to original Decentro-specific headers for backward compatibility
+    const forwardHeaders = customHeaders || {
+      'client_id': req.headers['client_id'],
+      'client_secret': req.headers['client_secret'],
+      'module_secret': req.headers['module_secret'] || '',
+      'Content-Type': 'application/json',
+    };
+
     const response = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'client_id': req.headers['client_id'],
-        'client_secret': req.headers['client_secret'],
-        'module_secret': req.headers['module_secret'] || '',
-        'Content-Type': 'application/json',
-      },
+      headers: forwardHeaders,
       body: JSON.stringify(body),
     });
     const data = await response.json();
