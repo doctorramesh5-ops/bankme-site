@@ -8493,12 +8493,32 @@ async function fetchBBPSBill(silent){
     var j=await r.json();
     if(j&&j.success===false){ throw new Error(j.message||'Could not fetch bill'); }
     var d=(j&&j.data)||j||{};
+    var hasAmount=(d.amount!=null||d.bill_amount!=null);
     var billAmt=Number(d.amount||d.bill_amount||0);
     var consumerName=d.customerName||d.customer_name||d.consumer_name||d.customerFullName||'';
     var dueDateStr=d.dueDate||d.due_date||'';
     var billNumber=d.billNumber||d.bill_number||d.bill_id||('BILL'+consumer.slice(-6));
 
-    window._bbpsFetchedAmt=billAmt;
+    window._bbpsFetchedAmt=hasAmount?billAmt:null;
+
+    if(!hasAmount){
+      // No auto-fetchable amount — either nothing is due this cycle, or this
+      // biller is a prepaid/recharge type that doesn't support bill-fetch at
+      // all (e.g. Jio Prepaid). Let the retailer key in the amount manually
+      // instead of guessing or showing a fake ₹0.00.
+      bc.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<div style="font-size:1.2rem">'+catObj.icon+'</div>'
+        +'<div style="font-size:.82rem;font-weight:700;color:var(--text)">'+biller.name+'</div>'
+        +'</div>'
+        +'<div style="font-size:.76rem;color:var(--muted2)">No bill amount available automatically for this account right now (either nothing is due, or this biller does not support auto bill-fetch). Enter the amount manually below.</div>';
+      var amtEl0=document.getElementById('bbps-amount');
+      if(amtEl0) amtEl0.value='';
+      var totalEl0=document.getElementById('bbps-total-amt');
+      if(totalEl0) totalEl0.textContent='₹—';
+      if(as) as.style.display='block';
+      if(!silent) toast('No bill amount available — enter it manually','s');
+      return;
+    }
 
     var rows=[].concat(consumerName?[['👤 Consumer',consumerName]]:[]).concat([
       ['🏢 Biller',biller.name],
