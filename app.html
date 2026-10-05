@@ -10417,7 +10417,7 @@ async function aepsOnboardForm(){
     : inp('ob-state', 'State', 'e.g. Tamil Nadu');
   w.innerHTML = '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:12px;margin-bottom:14px">'
     + '<div style="font-weight:700;color:var(--gold);font-size:.88rem;margin-bottom:4px">Eko retailer onboarding (one time)</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your account has no Eko retailer code yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div></div>'
+    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your account has no Eko retailer code yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div>' + (CU && CU.role === 'customer' ? '<div style="font-size:.74rem;color:var(--gold);margin-top:8px;line-height:1.5">⚠️ AEPS is for retailers. Completing this form upgrades your account from Customer to <strong>Retailer</strong>.</div>' : '') + '</div>'
     + inp('ob-first', 'First name (as on PAN)', 'First name', first)
     + inp('ob-last', 'Last name (as on PAN)', 'Last name', last)
     + inp('ob-pan', 'PAN number', 'ABCDE1234F', prePan, 'maxlength="10" style="text-transform:uppercase;letter-spacing:2px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"')
@@ -10452,6 +10452,7 @@ async function aepsOnboardSubmit(){
   var r = await aepsCall('POST', '/eko/aeps/v2/onboard', body);
   if (!(r.ok && r.d && r.d.userCode)) return aepsFail(1, r.msg || 'Eko could not onboard this retailer. Check the details match your PAN card.', 'aepsOnboardForm()');
   AEPS_LIVE.userCode = String(r.d.userCode);
+  if (r.d.promoted) await bmApplyRetailerUpgrade(r.d);
   try { if (CU) CU.ekoUserCode = AEPS_LIVE.userCode; } catch (e) {}
   var w = document.getElementById('aeps-wizard');
   w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
@@ -10726,6 +10727,20 @@ async function bmLoadKyc(){
     if (d && d.success) return { panName: bmNameOk(d.panName) ? d.panName : '', panNumber: d.panNumber || '', dob: d.dob || '' };
   } catch (e) {}
   return {};
+}
+</script>
+<script id="customer-upgrade-web">
+async function bmApplyRetailerUpgrade(d){
+  try {
+    if (CU) { CU.role = 'retailer'; if (d.internalId) CU.internalId = d.internalId; }
+    if (db && CU && CU.uid && String(CU.uid).indexOf('demo-') !== 0) {
+      await db.collection('bankme_users').doc(CU.uid).update({ role: 'retailer', ekoUserCode: String(d.userCode || '') }).catch(function(){});
+    }
+    var rc = getRC('retailer'), badge = document.getElementById('role-badge');
+    if (badge) { badge.textContent = rc.label; badge.style.background = rc.color + '20'; badge.style.color = rc.color; badge.style.border = '1px solid ' + rc.color + '40'; }
+    var nm = document.getElementById('nb-mynetwork'); if (nm) nm.style.display = '';
+    toast('Your account is now a Retailer account ✅', 's');
+  } catch (e) {}
 }
 </script>
 </body>
