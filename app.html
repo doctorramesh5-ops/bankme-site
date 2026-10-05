@@ -1964,8 +1964,8 @@ async function fetchMyIdentity(){
       var chip=document.getElementById('identity-chip');
       if(chip&&(CU.internalId||CU.ekoUserCode)){
         chip.style.display='inline-block';
-        chip.textContent=(CU.internalId||'')+(CU.ekoUserCode?' \u00b7 Eko '+CU.ekoUserCode:'');
-        chip.title='Your BankMe Internal ID'+(CU.ekoUserCode?' and Eko User Code':'');
+        chip.textContent=(CU.internalId||'')+((CU.role==='admin'&&CU.ekoUserCode)?' \u00b7 Eko '+CU.ekoUserCode:'');
+        chip.title='Your BankMe Internal ID'+((CU.role==='admin'&&CU.ekoUserCode)?' and Eko User Code':'');
       }
     }
   }catch(e){ /* identity display is non-critical \u2014 fail silently */ }
@@ -4101,7 +4101,7 @@ async function processService(svcId){
     if(totalDebit>(CU.wallet||0)){ toast('Insufficient wallet balance (need ₹'+fmtN(totalDebit)+')','e'); return; }
     var senderName=bbpsSenderName();
     var form=document.getElementById('svc-form');
-    form.innerHTML='<div style="text-align:center;padding:24px"><div style="width:44px;height:44px;border:4px solid rgba(245,158,11,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px"></div><p style="color:var(--gold);font-weight:600">💸 Processing Payment…</p><p style="color:var(--muted2);font-size:.75rem;margin-top:4px">NPCI BBPS via Eko</p></div>';
+    form.innerHTML='<div style="text-align:center;padding:24px"><div style="width:44px;height:44px;border:4px solid rgba(245,158,11,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px"></div><p style="color:var(--gold);font-weight:600">💸 Processing Payment…</p><p style="color:var(--muted2);font-size:.75rem;margin-top:4px">NPCI BBPS</p></div>';
     var txnId;
     try{
       var r=await fetch(BANKME_API+'/eko/bbps/pay-bill',{
@@ -10263,7 +10263,7 @@ async function aepsActPick(key, input){
 async function aepsActivationOpen(){
   var w = document.getElementById('aeps-wizard'); if (!w) return;
   var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
-  aepsBusy(1, 'Loading activation form…', 'Fetching shop types and states from Eko');
+  aepsBusy(1, 'Loading activation form…', 'Fetching shop types and states');
   var okId = await aepsLoadIdentity();
   await aepsActLoadLists();
   if (!okId) return aepsOnboardForm();
