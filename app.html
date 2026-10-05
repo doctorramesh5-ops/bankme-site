@@ -9703,6 +9703,615 @@ goPage = function(pg){
 </script>
 
 
+<script id="aeps-real-web">
+// ═══════════════════════════════════════════════════════════════════
+// REAL AEPS (Eko Fingpay) — overrides the old simulated wizard.
+// Flow: Operator KYC (daily; one-time e-KYC if needed) → customer txn.
+// Biometric via RD Service on 127.0.0.1 (Windows PC + scanner driver).
+// ═══════════════════════════════════════════════════════════════════
+var AEPS_API = 'https://bankme-backend.onrender.com';
+var AEPS_EKYC_WADH = 'E0jzJ/P8UopUHAieZn8CKqS4WPMi5ZSYXgfnlfkWjrc=';
+var AEPS_RD = { base: null, capture: '', info: '' };
+var AEPS_LIVE = { banks: null, userCode: '', opPhone: '', opAadhaar: '', opBank: null, cust: null, kyc: {} };
+
+function aepsEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function aepsToday(){ return new Date().toISOString().slice(0,10); }
+
+async function aepsCall(method, path, body){
+  var c = new AbortController(); var t = setTimeout(function(){ c.abort(); }, 70000);
+  try {
+    var r = await fetch(AEPS_API + path, { method: method, signal: c.signal,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined });
+    var j = await r.json();
+    var d = j && j.data ? j.data : null;
+    var msg = typeof j.error === 'string' ? j.error : (j.error && j.error.message) || (d && d.message) || '';
+    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg };
+  } catch (e) {
+    return { ok: false, d: null, code: null, msg: e.name === 'AbortError' ? 'Server is waking up — please try again in a minute' : 'Network error: ' + e.message };
+  } finally { clearTimeout(t); }
+}
+
+function aepsFetchTO(url, opts, ms){
+  var c = new AbortController(); var t = setTimeout(function(){ c.abort(); }, ms);
+  opts = opts || {}; opts.signal = c.signal;
+  return fetch(url, opts).finally(function(){ clearTimeout(t); });
+}
+
+async function aepsDiscoverRD(){
+  for (var port = 11100; port <= 11120; port++) {
+    try {
+      var r = await aepsFetchTO('http://127.0.0.1:' + port + '/', { method: 'RDSERVICE' }, 1200);
+      var xml = await r.text();
+      var doc = new DOMParser().parseFromString(xml, 'text/xml');
+      var svc = doc.getElementsByTagName('RDService')[0];
+      if (!svc || svc.getAttribute('status') !== 'READY') continue;
+      var cap = '';
+      var ifs = doc.getElementsByTagName('Interface');
+      for (var i = 0; i < ifs.length; i++) if (ifs[i].getAttribute('id') === 'CAPTURE') cap = ifs[i].getAttribute('path');
+      if (!cap) continue;
+      AEPS_RD = { base: 'http://127.0.0.1:' + port, capture: cap, info: svc.getAttribute('info') || 'Biometric device' };
+      return AEPS_RD;
+    } catch (e) { /* port closed — keep scanning */ }
+  }
+  AEPS_RD = { base: null, capture: '', info: '' };
+  return null;
+}
+
+// returns {xml} or {error}
+async function aepsCaptureFinger(wadh){
+  if (!AEPS_RD.base && !(await aepsDiscoverRD())) return { error: 'No biometric device found. Plug in the scanner, install its RD Service driver, and try again (Windows PC + Chrome/Edge).' };
+  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" posh="UNKNOWN" env="P"/></PidOptions>';
+  try {
+    var r = await aepsFetchTO(AEPS_RD.base + AEPS_RD.capture, { method: 'CAPTURE', body: opts }, 30000);
+    var xml = await r.text();
+    var doc = new DOMParser().parseFromString(xml, 'text/xml');
+    var resp = doc.getElementsByTagName('Resp')[0];
+    if (!resp) return { error: 'Unexpected response from the biometric device' };
+    if (resp.getAttribute('errCode') !== '0') return { error: 'Fingerprint not captured: ' + (resp.getAttribute('errInfo') || 'error ' + resp.getAttribute('errCode')) };
+    return { xml: xml, q: resp.getAttribute('qScore') };
+  } catch (e) {
+    AEPS_RD.base = null;
+    return { error: 'Could not reach the biometric device. Check it is connected and retry.' };
+  }
+}
+
+function aepsGeo(){
+  return new Promise(function(resolve){
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(function(p){
+      resolve(p.coords.latitude.toFixed(4) + ',' + p.coords.longitude.toFixed(4));
+    }, function(){ resolve(null); }, { enableHighAccuracy: true, timeout: 15000 });
+  });
+}
+
+async function aepsLoadBanks(){
+  if (AEPS_LIVE.banks) return AEPS_LIVE.banks;
+  var r = await aepsCall('GET', '/eko/banks');
+  var list = (r.d && r.d.param_attributes && r.d.param_attributes.list_elements) || [];
+  AEPS_LIVE.banks = list.map(function(b){ return { name: b.label, code: b.value }; }).filter(function(b){ return b.name && b.code; })
+    .sort(function(a,b){ return a.name.localeCompare(b.name); });
+  return AEPS_LIVE.banks;
+}
+
+async function aepsLoadIdentity(){
+  if (AEPS_LIVE.userCode && AEPS_LIVE.opPhone) return true;
+  var phone = String((CU && (CU.phone || CU.mobile)) || '').replace(/\D/g, '').slice(-10);
+  AEPS_LIVE.opPhone = phone;
+  if (CU && CU.ekoUserCode) { AEPS_LIVE.userCode = String(CU.ekoUserCode); return true; }
+  if (phone.length !== 10) return false;
+  var r = await aepsCall('GET', '/user/' + phone + '/identity');
+  if (r.d === null) {
+    try { var rr = await fetch(AEPS_API + '/user/' + phone + '/identity'); var j = await rr.json(); if (j && j.ekoUserCode) AEPS_LIVE.userCode = String(j.ekoUserCode); } catch (e) {}
+  }
+  return !!AEPS_LIVE.userCode;
+}
+
+// ── bank picker (live Eko bank list) ──
+function aepsBankPickerHTML(prefix){
+  return '<div style="position:relative;margin-bottom:4px">'
+    + '<input type="text" id="' + prefix + '-search" placeholder="🔍 Type to search bank..." autocomplete="off"'
+    + ' style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.88rem;outline:none;box-sizing:border-box"'
+    + ' oninput="aepsBankFilter(\'' + prefix + '\',this.value)" onfocus="aepsBankFilter(\'' + prefix + '\',this.value)" onblur="setTimeout(function(){var d=document.getElementById(\'' + prefix + '-dd\');if(d)d.style.display=\'none\';},200)"/>'
+    + '<div id="' + prefix + '-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;margin-top:2px;max-height:200px;overflow-y:auto"></div>'
+    + '</div><input type="hidden" id="' + prefix + '-code" value=""/>'
+    + '<div id="' + prefix + '-badge" style="display:none;font-size:.78rem;color:var(--rtai);font-weight:600;margin:6px 0 10px"></div>';
+}
+function aepsBankFilter(prefix, q){
+  var dd = document.getElementById(prefix + '-dd'); if (!dd) return;
+  var banks = AEPS_LIVE.banks || [];
+  q = (q || '').toLowerCase().trim();
+  var res = banks.filter(function(b){ return !q || b.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 60);
+  dd.innerHTML = res.length ? res.map(function(b){
+    return '<div onmousedown="aepsBankPick(\'' + prefix + '\',\'' + aepsEsc(b.code) + '\')" style="padding:10px 14px;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text)">' + aepsEsc(b.name) + '</div>';
+  }).join('') : '<div style="padding:12px 14px;font-size:.8rem;color:var(--muted2)">' + (banks.length ? 'No banks found' : 'Bank list is loading… try again in a moment') + '</div>';
+  dd.style.display = 'block';
+}
+function aepsBankPick(prefix, code){
+  var b = (AEPS_LIVE.banks || []).filter(function(x){ return x.code === code; })[0]; if (!b) return;
+  document.getElementById(prefix + '-code').value = b.code;
+  document.getElementById(prefix + '-search').value = b.name;
+  var badge = document.getElementById(prefix + '-badge'); badge.style.display = 'block'; badge.textContent = '🏦 ' + b.name;
+  document.getElementById(prefix + '-dd').style.display = 'none';
+}
+
+function aepsBusy(step, title, sub){
+  var w = document.getElementById('aeps-wizard'); if (!w) return;
+  w.innerHTML = aepsStepBar(step)
+    + '<div style="text-align:center;padding:24px 10px"><div style="width:48px;height:48px;border:4px solid rgba(0,212,170,.2);border-top-color:var(--rtai);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px"></div>'
+    + '<div style="font-weight:700;color:var(--rtai);font-size:.95rem">' + aepsEsc(title) + '</div>'
+    + '<div style="color:var(--muted2);font-size:.76rem;margin-top:6px">' + aepsEsc(sub || '') + '</div></div>';
+}
+function aepsFail(step, msg, backFn){
+  var w = document.getElementById('aeps-wizard'); if (!w) return;
+  w.innerHTML = aepsStepBar(step)
+    + '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:14px;padding:18px;text-align:center;margin-bottom:12px">'
+    + '<div style="font-size:2rem;margin-bottom:6px">⚠️</div><div style="font-weight:700;color:#ef4444;font-size:.92rem;margin-bottom:6px">Could not complete</div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.5">' + aepsEsc(msg || 'Unknown error') + '</div></div>'
+    + '<button onclick="' + (backFn || 'initAEPSWizard()') + '" class="btn-primary">← Try again</button>';
+}
+
+// ═════════ STEP 1 — operator identity ═════════
+function initAEPSWizard(){
+  AEPS_WIZARD.step = 1; AEPS_WIZARD.operatorAadhaar = ''; AEPS_WIZARD.device = '';
+  AEPS_LIVE.opAadhaar = ''; AEPS_LIVE.cust = null; AEPS_LIVE.kyc = {};
+  renderAEPSStep1();
+}
+
+async function renderAEPSStep1(){
+  var w = document.getElementById('aeps-wizard'); if (!w) return;
+  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
+  aepsBusy(1, 'Preparing AEPS…', 'Loading your retailer profile and bank list');
+  var okId = await aepsLoadIdentity();
+  await aepsLoadBanks();
+  if (!okId) {
+    return aepsFail(1, 'Your account is not linked to an Eko retailer code yet, so AEPS cannot run. Contact BankMe support.', 'initAEPSWizard()');
+  }
+  w.innerHTML = aepsStepBar(1)
+    + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:16px">'
+    + '<div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📋 UIDAI / RBI Regulation</div>'
+    + '<div style="font-size:.75rem;color:var(--muted2);line-height:1.55">The operator (you) must verify your own fingerprint once every day before the first customer transaction.</div></div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + ' · ' + aepsEsc(AEPS_LIVE.opPhone) + '</div>'
+    + '<label class="flabel">Your Aadhaar Number (Operator)</label>'
+    + '<input class="finp" id="op-aadhaar" type="tel" maxlength="12" placeholder="12-digit Aadhaar number" style="letter-spacing:3px;font-size:1rem;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
+    + '<div style="font-size:.7rem;color:var(--muted2);margin:-8px 0 14px;line-height:1.5">🔒 Sent encrypted for fingerprint verification only. Not stored.</div>'
+    + '<label class="flabel">Your Aadhaar-linked Bank</label>' + aepsBankPickerHTML('opb')
+    + '<label class="flabel">Biometric Device</label>'
+    + '<select class="fsel" id="op-device" onchange="showDeviceInstallLink(this.value)"><option value="">-- Select (for driver help) --</option>'
+    + AEPS_DEVICES.map(function(d){ return '<option value="' + d.value + '">' + d.label + '</option>'; }).join('') + '</select>'
+    + '<div id="device-install-info" style="display:none;margin-top:6px;background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.25);border-radius:10px;padding:10px"></div>'
+    + '<button onclick="submitAEPSStep1()" class="btn-primary" style="margin-top:10px">Verify My Fingerprint →</button>'
+    + '<div style="text-align:center;margin-top:10px;font-size:.65rem;color:var(--muted)">🛡️ RTAI Secured · UIDAI Compliant · RD Service Biometrics</div>';
+}
+
+async function submitAEPSStep1(){
+  var a = (document.getElementById('op-aadhaar') || {}).value || '';
+  var bank = (document.getElementById('opb-code') || {}).value || '';
+  if (!/^\d{12}$/.test(a)) { toast('Enter your 12-digit Aadhaar number', 'e'); return; }
+  if (!bank) { toast('Select your Aadhaar-linked bank', 'e'); return; }
+  AEPS_LIVE.opAadhaar = a; AEPS_LIVE.opBank = bank;
+  AEPS_WIZARD.step = 2;
+  await aepsOperatorDaily();
+}
+
+// ═════════ STEP 2 — operator biometric (daily KYC, e-KYC if required) ═════════
+function aepsOpBody(extra){
+  var b = { userCode: AEPS_LIVE.userCode, customerId: AEPS_LIVE.opPhone, aadhaar: AEPS_LIVE.opAadhaar, bankCode: AEPS_LIVE.opBank, latlong: AEPS_LIVE.geo };
+  for (var k in extra) b[k] = extra[k];
+  return b;
+}
+
+async function aepsOperatorDaily(){
+  aepsBusy(2, 'Getting your location…', 'Allow location access if the browser asks');
+  AEPS_LIVE.geo = await aepsGeo();
+  if (!AEPS_LIVE.geo) return aepsFail(1, 'Location is required for AEPS. Allow location access for this site and try again.', 'initAEPSWizard()');
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(2)
+    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
+    + '<div style="font-size:2.8rem;margin-bottom:10px">👆</div>'
+    + '<div style="font-weight:700;color:var(--rtai);font-size:1rem;margin-bottom:4px">Place YOUR finger on the scanner</div>'
+    + '<div style="color:var(--muted2);font-size:.78rem">Operator daily verification · Aadhaar XXXX XXXX ' + AEPS_LIVE.opAadhaar.slice(-4) + '</div></div>'
+    + '<button onclick="aepsRunDaily()" class="btn-primary">👆 Scan Fingerprint</button>'
+    + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
+}
+
+async function aepsRunDaily(){
+  aepsBusy(2, 'Scanning…', 'Keep your finger on the device');
+  var cap = await aepsCaptureFinger('');
+  if (cap.error) return aepsFail(2, cap.error, 'aepsOperatorDaily()');
+  aepsBusy(2, 'Verifying with UIDAI…', 'This can take up to a minute');
+  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/daily', aepsOpBody({ piddata: cap.xml }));
+  if (r.ok && r.code === 1713) { return aepsOperatorDone(); }
+  if (/ekyc/i.test(r.msg || '')) { return aepsEkycStart(); }
+  return aepsFail(2, r.msg || 'Daily KYC failed', 'aepsOperatorDaily()');
+}
+
+function aepsOperatorDone(){
+  AEPS_LIVE.opAadhaar = ''; // operator Aadhaar no longer needed in memory
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(2)
+    + '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
+    + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div>'
+    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Operator Verified for Today</div>'
+    + '<div style="font-size:.78rem;color:var(--muted2)">' + aepsEsc(CU ? CU.name : 'Operator') + ' · UIDAI daily KYC complete</div></div>'
+    + '<button onclick="renderAEPSStep3()" class="btn-primary">Proceed to AEPS Service →</button>';
+  setTimeout(function(){ if (AEPS_WIZARD.step === 2) renderAEPSStep3(); }, 1200);
+}
+
+// one-time e-KYC: OTP → verify → biometric
+function aepsEkycStart(){
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(2)
+    + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:14px;margin-bottom:14px">'
+    + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">One-time e-KYC needed</div>'
+    + '<div style="font-size:.76rem;color:var(--muted2);line-height:1.55">Your bank e-KYC is not complete yet. We will send an OTP to your Aadhaar-linked mobile, then scan your finger once. After this you only need the daily fingerprint.</div></div>'
+    + '<button onclick="aepsEkycSendOtp()" class="btn-primary">Send OTP to my Aadhaar mobile</button>';
+}
+async function aepsEkycSendOtp(){
+  aepsBusy(2, 'Sending OTP…', '');
+  var r = await aepsCall('POST', '/eko/aeps/v2/kyc/otp', aepsOpBody({}));
+  if (!(r.ok && r.code === 1600)) return aepsFail(2, r.msg || 'Could not send OTP', 'aepsEkycStart()');
+  AEPS_LIVE.kyc = { otpRefId: String(r.d.data.otp_ref_id), referenceTid: String(r.d.data.reference_tid) };
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(2)
+    + '<label class="flabel">Enter the OTP received on your Aadhaar-linked mobile</label>'
+    + '<input class="finp" id="ekyc-otp" type="tel" maxlength="8" placeholder="OTP" style="letter-spacing:6px;font-size:1.2rem;font-weight:700;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
+    + '<button onclick="aepsEkycVerify()" class="btn-primary">Verify OTP →</button>';
+}
+async function aepsEkycVerify(){
+  var otp = (document.getElementById('ekyc-otp') || {}).value || '';
+  if (otp.length < 4) { toast('Enter the OTP', 'e'); return; }
+  aepsBusy(2, 'Verifying OTP…', '');
+  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/otp/verify', aepsOpBody({ otp: otp, otpRefId: AEPS_LIVE.kyc.otpRefId, referenceTid: AEPS_LIVE.kyc.referenceTid }));
+  if (!(r.ok && r.code === 1604)) return aepsFail(2, r.msg || 'OTP verification failed', 'aepsEkycStart()');
+  AEPS_LIVE.kyc = { otpRefId: String(r.d.data.otp_ref_id), referenceTid: String(r.d.data.reference_tid) };
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(2)
+    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
+    + '<div style="font-size:2.8rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:1rem">OTP verified — scan YOUR finger for e-KYC</div></div>'
+    + '<button onclick="aepsEkycBio()" class="btn-primary">👆 Scan Fingerprint</button>';
+}
+async function aepsEkycBio(){
+  aepsBusy(2, 'Scanning…', 'Keep your finger on the device');
+  var cap = await aepsCaptureFinger(AEPS_EKYC_WADH);
+  if (cap.error) return aepsFail(2, cap.error, 'aepsEkycStart()');
+  aepsBusy(2, 'Completing e-KYC…', 'This can take up to a minute');
+  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/biometric', aepsOpBody({ piddata: cap.xml, otpRefId: AEPS_LIVE.kyc.otpRefId, referenceTid: AEPS_LIVE.kyc.referenceTid }));
+  if (!(r.ok && r.code === 1605)) return aepsFail(2, r.msg || 'e-KYC failed', 'aepsEkycStart()');
+  toast('e-KYC complete ✅ — now your daily fingerprint', 's');
+  aepsOperatorDaily();
+}
+
+// ═════════ STEP 3 — customer transaction ═════════
+function renderAEPSStep3(){
+  var w = document.getElementById('aeps-wizard'); if (!w) return;
+  AEPS_WIZARD.step = 3;
+  var c = AEPS_LIVE.cust || {};
+  w.innerHTML = aepsStepBar(3)
+    + '<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:.74rem;color:var(--green);font-weight:600">✅ Operator verified · Now serving customer</div>'
+    + '<label class="flabel">Customer Mobile</label><input class="finp" id="m-phone" placeholder="10-digit mobile" type="tel" maxlength="10" value="' + aepsEsc(c.phone || '') + '" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
+    + '<label class="flabel">Customer Aadhaar (12 digits)</label>'
+    + '<input class="finp" id="m-aadhaar" placeholder="12-digit Aadhaar" maxlength="12" type="tel" value="' + aepsEsc(c.aadhaar || '') + '" style="letter-spacing:3px;font-size:1rem;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
+    + '<div style="font-size:.7rem;color:var(--muted2);margin:-8px 0 12px">🔒 Encrypted for UIDAI authentication. Not stored.</div>'
+    + '<label class="flabel">Transaction Type</label>'
+    + '<select class="fsel" id="m-type" onchange="toggleAEPSFields()"><option value="withdrawal">Cash Withdrawal</option><option value="balance">Balance Enquiry</option><option value="ministatement">Mini Statement</option></select>'
+    + '<div id="aeps-amount-row"><label class="flabel">Amount (₹)</label>'
+    + '<input class="finp" id="m-amount" placeholder="Enter withdrawal amount" type="number" min="100" step="100" value="' + aepsEsc(c.amount || '') + '"/>'
+    + '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
+    + [100, 500, 1000, 2000, 5000].map(function(a){ return '<button type="button" onclick="setAmt(' + a + ')" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.74rem">₹' + a.toLocaleString('en-IN') + '</button>'; }).join('')
+    + '</div></div>'
+    + '<label class="flabel">Customer Bank</label>' + aepsBankPickerHTML('cb')
+    + '<button onclick="processAEPSCustomer()" class="btn-primary" style="margin-top:6px">👆 Customer Biometric & Process →</button>';
+  if (c.bank) aepsBankPick('cb', c.bank);
+}
+
+function aepsTxnDone(){
+  var f = document.getElementById('svc-form'), res = document.getElementById('svc-result');
+  if (f) f.style.display = 'none'; if (res) res.style.display = 'block'; return res;
+}
+
+async function processAEPSCustomer(){
+  var phone = (document.getElementById('m-phone') || {}).value || '';
+  var aad = (document.getElementById('m-aadhaar') || {}).value || '';
+  var type = (document.getElementById('m-type') || {}).value || 'withdrawal';
+  var bank = (document.getElementById('cb-code') || {}).value || '';
+  var amount = type === 'withdrawal' ? (parseInt((document.getElementById('m-amount') || {}).value, 10) || 0) : 0;
+  if (!/^\d{10}$/.test(phone)) { toast('Enter valid 10-digit customer mobile', 'e'); return; }
+  if (!/^\d{12}$/.test(aad)) { toast('Enter the customer\'s 12-digit Aadhaar', 'e'); return; }
+  if (!bank) { toast('Please select customer bank', 'e'); return; }
+  if (type === 'withdrawal' && amount < 100) { toast('Minimum withdrawal ₹100', 'e'); return; }
+  AEPS_LIVE.cust = { phone: phone, aadhaar: aad, bank: bank, amount: amount || '' };
+  var bankName = ((AEPS_LIVE.banks || []).filter(function(b){ return b.code === bank; })[0] || {}).name || bank;
+
+  aepsBusy(3, 'Getting your location…', '');
+  var geo = await aepsGeo();
+  if (!geo) return aepsFail(3, 'Location is required for AEPS. Allow location access and try again.', 'renderAEPSStep3()');
+
+  var base = { userCode: AEPS_LIVE.userCode, customerId: phone, aadhaar: aad, bankCode: bank, latlong: geo };
+  var txnOtpId = '';
+  if (type === 'withdrawal' && amount > 5000) {
+    aepsBusy(3, 'Requesting transaction OTP…', 'The customer receives an SMS on the Aadhaar-linked mobile');
+    var o = await aepsCall('POST', '/eko/aeps/v2/withdrawal-otp', Object.assign({}, base, { amount: amount }));
+    if (!(o.ok && o.d && o.d.data && o.d.data.fp_transaction_id)) return aepsFail(3, o.msg || 'Could not request OTP', 'renderAEPSStep3()');
+    txnOtpId = String(o.d.data.fp_transaction_id);
+  }
+
+  var w = document.getElementById('aeps-wizard');
+  w.innerHTML = aepsStepBar(3)
+    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
+    + '<div style="font-size:2.5rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:.95rem;margin-bottom:4px">Customer Finger Placement</div>'
+    + '<div style="color:var(--muted2);font-size:.78rem">Aadhaar XXXX XXXX ' + aad.slice(-4) + ' · ' + aepsEsc(bankName) + '</div></div>'
+    + '<button onclick="aepsCustomerGo()" class="btn-primary">👆 Scan Customer Fingerprint</button>'
+    + '<button onclick="renderAEPSStep3()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
+  AEPS_LIVE.pending = { type: type, amount: amount, base: base, txnOtpId: txnOtpId, bankName: bankName };
+}
+
+async function aepsCustomerGo(){
+  var p = AEPS_LIVE.pending; if (!p) return renderAEPSStep3();
+  aepsBusy(3, 'Scanning…', 'Ask the customer to keep the finger on the device');
+  var cap = await aepsCaptureFinger('');
+  if (cap.error) return aepsFail(3, cap.error, 'renderAEPSStep3()');
+  aepsBusy(3, 'Processing AEPS transaction…', 'Contacting ' + p.bankName + ' — do not close this window');
+  var body = Object.assign({}, p.base, { piddata: cap.xml });
+  var path = '/eko/aeps/v2/balance';
+  if (p.type === 'ministatement') path = '/eko/aeps/v2/mini-statement';
+  if (p.type === 'withdrawal') { path = '/eko/aeps/v2/withdrawal'; body.amount = p.amount; if (p.txnOtpId) body.txnOtpRequestId = p.txnOtpId; }
+  var r = await aepsCall('POST', path, body);
+  AEPS_LIVE.pending = null;
+  aepsShowResult(p, r);
+}
+
+function aepsShowResult(p, r){
+  var okCodes = { withdrawal: 1463, balance: 1466, ministatement: 1527 };
+  var labels = { withdrawal: 'Cash Withdrawal', balance: 'Balance Enquiry', ministatement: 'Mini Statement' };
+  var d = (r.d && r.d.data) || {};
+  var cust = AEPS_LIVE.cust || {};
+  var success = r.ok && r.code === okCodes[p.type];
+  var pending = p.type === 'withdrawal' && r.code === 1465;
+  var res = aepsTxnDone(); if (!res) return;
+  var color = success ? 'var(--green)' : pending ? 'var(--gold)' : '#ef4444';
+  var title = success ? labels[p.type] + ' Successful' : pending ? 'Withdrawal Pending' : labels[p.type] + ' Failed';
+
+  var rows = [['Transaction Type', labels[p.type]], ['Customer Mobile', '+91 ' + aepsEsc(cust.phone)], ['Bank', aepsEsc(p.bankName)]];
+  if (d.aadhar) rows.push(['Aadhaar', aepsEsc(d.aadhar)]);
+  if (p.type === 'withdrawal' && (success || pending)) rows.push(['Amount', '₹' + fmtN(parseFloat(d.amount || p.amount))]);
+  if (d.customer_balance !== undefined && d.customer_balance !== '' && (p.type !== 'withdrawal' || success)) rows.push(['Account Balance', '₹' + fmtN(parseFloat(d.customer_balance) || 0)]);
+  if (d.commission) rows.push(['Commission', '₹' + aepsEsc(d.commission)]);
+  if (d.tid) rows.push(['Transaction ID', aepsEsc(d.tid)]);
+  if (d.bank_ref_num) rows.push(['Bank Ref (RRN)', aepsEsc(d.bank_ref_num)]);
+  rows.push(['Date & Time', aepsEsc(d.transaction_date || new Date().toLocaleString('en-IN'))]);
+  if (!success) rows.push(['Reason', aepsEsc(pending ? 'Awaiting bank confirmation' : (r.msg || d.comment || 'Declined'))]);
+
+  var mini = '';
+  if (success && p.type === 'ministatement' && d.mini_statement_list && d.mini_statement_list.length) {
+    mini = '<div style="margin-top:10px"><div style="font-size:.7rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Mini Statement</div>'
+      + d.mini_statement_list.map(function(t){
+        var cr = String(t.txnType).toLowerCase().indexOf('cr') === 0;
+        return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.74rem"><div><div style="color:var(--text)">' + aepsEsc(t.narration) + '</div><div style="color:var(--muted2);font-size:.66rem">' + aepsEsc(t.date) + '</div></div><div style="font-weight:700;color:' + (cr ? 'var(--green)' : '#ef4444') + '">' + (cr ? '+' : '-') + '₹' + aepsEsc(t.amount) + '</div></div>';
+      }).join('') + '</div>';
+  }
+
+  var txnId = d.tid ? String(d.tid) : '';
+  if (p.type === 'withdrawal' && success && txnId) {
+    try {
+      TXN_HISTORY.push({ id: txnId, service: 'aeps', title: 'AEPS Cash Withdrawal', amount: parseFloat(d.amount || p.amount), type: 'credit',
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), txnId: txnId, status: 'success', rtaiVerified: true });
+    } catch (e) {}
+  }
+  var wd = (success && p.type !== 'withdrawal')
+    ? '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:11px 13px;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:.78rem;font-weight:700;color:var(--gold)">💸 Proceed to Cash Withdrawal?</div><button onclick="aepsDirectWithdraw()" style="flex-shrink:0;padding:8px 14px;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;color:#fff;font-size:.76rem;font-weight:700;cursor:pointer">Withdraw →</button></div>' : '';
+  var inq = pending && txnId
+    ? '<div style="font-size:.72rem;color:var(--muted2);margin-top:8px">Do not repeat the withdrawal. Check status with Transaction ID ' + aepsEsc(txnId) + ' or contact support.</div>' : '';
+
+  res.innerHTML = '<div style="background:var(--bg3);border:1px solid ' + color + ';border-radius:14px;padding:16px">'
+    + '<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">' + (success ? '✅' : pending ? '⏳' : '❌') + '</div>'
+    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;color:' + color + '">' + title + '</div></div>'
+    + '<div style="background:var(--bg2);border-radius:10px;padding:10px">'
+    + rows.map(function(x){ return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted2)">' + x[0] + '</span><span style="color:var(--text);font-weight:600;text-align:right;max-width:60%">' + x[1] + '</span></div>'; }).join('')
+    + '</div>' + mini + wd + inq
+    + '<div style="display:flex;gap:8px;margin-top:10px">'
+    + (success && p.type === 'withdrawal' && txnId ? '<button onclick="showInvoice(\'' + aepsEsc(txnId) + '\')" style="flex:1;padding:9px;border-radius:9px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);color:#818cf8;cursor:pointer;font-size:.78rem;font-weight:700">🧾 Receipt</button>' : '')
+    + '<button onclick="aepsAnother()" style="flex:1;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;cursor:pointer;font-size:.78rem;font-weight:700">New Transaction</button>'
+    + '<button onclick="document.getElementById(\'svc-modal\').classList.remove(\'show\')" style="flex:1;padding:9px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;font-size:.78rem;font-weight:700">Close</button>'
+    + '</div></div>';
+  toast(success ? labels[p.type] + ' successful ✅' : pending ? 'Withdrawal pending ⏳' : (r.msg || 'Transaction failed'), success ? 's' : 'e');
+}
+
+function aepsBackToForm(keep){
+  var f = document.getElementById('svc-form'), res = document.getElementById('svc-result');
+  if (res) res.style.display = 'none'; if (f) f.style.display = 'block';
+  if (!keep) AEPS_LIVE.cust = null;
+  renderAEPSStep3();
+}
+function aepsAnother(){ aepsBackToForm(false); }
+function aepsDirectWithdraw(){ aepsBackToForm(true); var t = document.getElementById('m-type'); if (t) { t.value = 'withdrawal'; toggleAEPSFields(); } }
+// QR / fake-scan helpers from the old wizard are intentionally disabled
+function simulateQRScan(){} function simulateBiometricScan(){} function renderAEPSStep2(){ return aepsOperatorDaily(); }
+</script>
+<script id="aeps-activation-web">
+// ═══════════════════════════════════════════════════════════════════
+// One-time AEPS (Eko Fingpay) ACTIVATION — website version.
+// Same fields as the mobile AEPSActivationScreen. Rendered inside #aeps-wizard.
+// ═══════════════════════════════════════════════════════════════════
+var AEPS_ACT = { shops: null, states: null, files: {}, prefilled: false };
+
+function aepsActList(r){
+  var l = (r && r.d && r.d.data && r.d.data.param_attributes && r.d.data.param_attributes.list_elements) || [];
+  return l.map(function(x){ return { id: String(x.value), name: String(x.label) }; })
+          .filter(function(x){ return x.id && x.name && x.name !== 'Select State'; });
+}
+async function aepsActLoadLists(){
+  async function get(path){
+    try { var r = await fetch(AEPS_API + path); var j = await r.json(); return { d: j }; } catch (e) { return { d: null }; }
+  }
+  if (!AEPS_ACT.shops) AEPS_ACT.shops = aepsActList(await get('/eko/aeps-shop-types'));
+  if (!AEPS_ACT.states) AEPS_ACT.states = aepsActList(await get('/eko/aeps-states'));
+}
+function aepsActOpts(list, ph){
+  return '<option value="">' + ph + '</option>' + (list || []).map(function(x){ return '<option value="' + aepsEsc(x.id) + '">' + aepsEsc(x.name) + '</option>'; }).join('');
+}
+function aepsShrink(file){
+  return new Promise(function(resolve, reject){
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      var s = Math.min(1, 1280 / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      var q = 0.7;
+      (function tryQ(){ c.toBlob(function(b){ if (b && b.size > 900 * 1024 && q > 0.3) { q -= 0.1; tryQ(); } else resolve(b); }, 'image/jpeg', q); })();
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('That file is not a valid image')); };
+    img.src = url;
+  });
+}
+async function aepsActPick(key, input){
+  var f = input.files && input.files[0]; var lab = document.getElementById('act-' + key + '-lab');
+  if (!f) return;
+  try {
+    var b = await aepsShrink(f); AEPS_ACT.files[key] = b;
+    if (lab) lab.textContent = '✅ ' + f.name + ' (' + Math.round(b.size / 1024) + ' KB)';
+  } catch (e) { AEPS_ACT.files[key] = null; if (lab) lab.textContent = '❌ ' + e.message; }
+}
+
+async function aepsActivationOpen(){
+  var w = document.getElementById('aeps-wizard'); if (!w) return;
+  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
+  aepsBusy(1, 'Loading activation form…', 'Fetching shop types and states from Eko');
+  var okId = await aepsLoadIdentity();
+  await aepsActLoadLists();
+  if (!okId) return aepsFail(1, 'Your account has no Eko retailer code yet. Complete retailer onboarding first.', 'initAEPSWizard()');
+  AEPS_ACT.files = {}; AEPS_ACT.geo = '';
+  var acc = '', ifsc = '';
+  try {
+    var r = await fetch(AEPS_API + '/user/' + AEPS_LIVE.opPhone + '/bank-accounts'); var j = await r.json();
+    if (j && j.success && Array.isArray(j.accounts) && j.accounts.length) {
+      var p = j.accounts.filter(function(a){ return a.isPrimary; })[0] || j.accounts[0];
+      acc = p.accountNumber || ''; ifsc = p.ifsc || '';
+    }
+  } catch (e) {}
+  function inp(id, label, ph, extra){ return '<label class="flabel">' + label + '</label><input class="finp" id="' + id + '" placeholder="' + (ph || '') + '" ' + (extra || '') + '/>'; }
+  function addr(p, title){
+    return '<div style="font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin:6px 0">' + title + '</div>'
+      + inp(p + '-line', 'Address line', 'Shop / door no, street, area')
+      + inp(p + '-city', 'City', 'City')
+      + '<label class="flabel">State</label><select class="fsel" id="' + p + '-state">' + aepsActOpts(AEPS_ACT.states, '-- Select State --') + '</select>'
+      + inp(p + '-pin', 'Pincode', '6-digit pincode', 'type="tel" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"');
+  }
+  function file(key, label){
+    return '<label class="flabel">' + label + '</label>'
+      + '<input type="file" accept="image/*" id="act-' + key + '" onchange="aepsActPick(\'' + key + '\',this)" style="width:100%;margin-bottom:4px;font-size:.78rem;color:var(--muted2)"/>'
+      + '<div id="act-' + key + '-lab" style="font-size:.72rem;color:var(--muted2);margin-bottom:10px">No file chosen</div>';
+  }
+  w.innerHTML =
+    '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:14px">'
+    + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">🔐 One-time AEPS Activation</div>'
+    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Do this once per retailer. Your PAN and Aadhaar photos go to Eko for KYC. Eko may take time to approve; until approved, AEPS transactions will be declined.</div></div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + '</div>'
+    + inp('act-account', 'Bank Account Number', 'Account number', 'type="tel" value="' + aepsEsc(acc) + '"')
+    + inp('act-ifsc', 'IFSC Code', 'e.g. HDFC0001234', 'maxlength="11" style="text-transform:uppercase" value="' + aepsEsc(ifsc) + '"')
+    + '<datalist id="act-devs">' + AEPS_DEVICES.map(function(d){ return '<option value="' + aepsEsc(d.label) + '">'; }).join('') + '</datalist>'
+    + inp('act-model', 'Biometric Device Model', 'e.g. Morpho MSO 1300 E3 L1', 'list="act-devs"')
+    + inp('act-serial', 'Device Serial Number', 'Printed on the device')
+    + inp('act-aadhaar', 'Your Aadhaar Number', '12-digit Aadhaar', 'type="tel" maxlength="12" style="letter-spacing:3px;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
+    + '<label class="flabel">Shop Type</label><select class="fsel" id="act-shop">' + aepsActOpts(AEPS_ACT.shops, '-- Select Shop Type --') + '</select>'
+    + addr('act-off', 'Office / shop address')
+    + '<label style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted2);margin:4px 0 10px"><input type="checkbox" id="act-same" checked onchange="document.getElementById(\'act-proof-box\').style.display=this.checked?\'none\':\'block\'"/> Address as per proof is same as office</label>'
+    + '<div id="act-proof-box" style="display:none">' + addr('act-prf', 'Address as per proof') + '</div>'
+    + '<label class="flabel">Shop GPS Location</label>'
+    + '<button type="button" onclick="aepsActGeo()" class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);margin-bottom:4px">📍 Capture my current location</button>'
+    + '<div id="act-geo-lab" style="font-size:.72rem;color:var(--muted2);margin-bottom:10px">Not captured (be at the shop)</div>'
+    + file('pan', 'PAN Card photo') + file('front', 'Aadhaar — front photo') + file('back', 'Aadhaar — back photo')
+    + '<button onclick="aepsActSubmit()" class="btn-primary" id="act-submit">Submit Activation to Eko →</button>'
+    + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
+}
+
+async function aepsActGeo(){
+  var lab = document.getElementById('act-geo-lab'); if (lab) lab.textContent = 'Getting location…';
+  AEPS_ACT.geo = (await aepsGeo()) || '';
+  if (lab) lab.textContent = AEPS_ACT.geo ? '✅ ' + AEPS_ACT.geo : '❌ Could not get location — allow it for this site and retry';
+}
+
+function aepsActVal(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+function aepsActCollect(){
+  var same = document.getElementById('act-same').checked;
+  var pre = same ? 'act-off' : 'act-prf';
+  function stateOf(p){ var s = document.getElementById(p + '-state'); return { id: s.value, name: s.value ? s.options[s.selectedIndex].text : '' }; }
+  var o = stateOf('act-off'), pr = stateOf(pre);
+  return {
+    account: aepsActVal('act-account'), ifsc: aepsActVal('act-ifsc').toUpperCase(),
+    model: aepsActVal('act-model'), serial: aepsActVal('act-serial'), aadhaar: aepsActVal('act-aadhaar'),
+    shop: aepsActVal('act-shop'),
+    off: { line: aepsActVal('act-off-line'), city: aepsActVal('act-off-city'), state: o, pin: aepsActVal('act-off-pin') },
+    prf: { line: aepsActVal(pre + '-line'), city: aepsActVal(pre + '-city'), state: pr, pin: aepsActVal(pre + '-pin') }
+  };
+}
+function aepsActValidate(v){
+  if (!/^\d{9,18}$/.test(v.account)) return 'Enter a valid bank account number';
+  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.ifsc)) return 'Enter a valid 11-character IFSC (e.g. HDFC0001234)';
+  if (!v.model || !v.serial) return 'Device model and serial number are required';
+  if (!/^\d{12}$/.test(v.aadhaar)) return 'Enter a valid 12-digit Aadhaar number';
+  if (!v.shop) return 'Select a shop type';
+  var blocks = [['Office', v.off], ['Proof', v.prf]];
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i][1];
+    if (!b.line || !b.city || !b.state.id || !/^\d{6}$/.test(b.pin)) return blocks[i][0] + ' address is incomplete (line, city, state, 6-digit pincode)';
+  }
+  if (!AEPS_ACT.geo) return 'Capture the shop GPS location';
+  if (!AEPS_ACT.files.pan || !AEPS_ACT.files.front || !AEPS_ACT.files.back) return 'PAN, Aadhaar front and Aadhaar back photos are all required';
+  return '';
+}
+
+async function aepsActSubmit(){
+  var v = aepsActCollect(), err = aepsActValidate(v);
+  if (err) { toast(err, 'e'); return; }
+  var btn = document.getElementById('act-submit'); if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  var f = new FormData();
+  f.append('modelname', v.model); f.append('devicenumber', v.serial);
+  f.append('account', v.account); f.append('ifsc', v.ifsc);
+  f.append('shop_type', v.shop); f.append('aadhar', v.aadhaar); f.append('latlong', AEPS_ACT.geo);
+  f.append('office_line', v.off.line); f.append('office_city', v.off.city); f.append('office_state', v.off.state.name);
+  f.append('office_state_id', v.off.state.id); f.append('office_pincode', v.off.pin);
+  f.append('proof_line', v.prf.line); f.append('proof_city', v.prf.city); f.append('proof_state', v.prf.state.name);
+  f.append('proof_state_id', v.prf.state.id); f.append('proof_pincode', v.prf.pin);
+  f.append('pan_card', AEPS_ACT.files.pan, 'pan.jpg');
+  f.append('aadhar_front', AEPS_ACT.files.front, 'aadhar_front.jpg');
+  f.append('aadhar_back', AEPS_ACT.files.back, 'aadhar_back.jpg');
+  var c = new AbortController(), t = setTimeout(function(){ c.abort(); }, 90000);
+  try {
+    var r = await fetch(AEPS_API + '/eko/agent/' + encodeURIComponent(AEPS_LIVE.userCode) + '/aeps-fingpay/activate', { method: 'PUT', body: f, signal: c.signal });
+    var j = await r.json();
+    var d = j && j.data ? j.data : null;
+    var ok = j && j.success && (!d || d.status === 0 || d.status === undefined);
+    var msg = (d && d.message) || (typeof j.error === 'string' ? j.error : (j.error && j.error.message)) || '';
+    AEPS_ACT.files = {};
+    if (ok) {
+      var w = document.getElementById('aeps-wizard');
+      w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
+        + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div><div style="font-weight:700;color:var(--green);font-size:1rem;margin-bottom:6px">Activation submitted to Eko</div>'
+        + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.55">' + aepsEsc(msg || 'Eko will review and approve your AEPS service.') + ' Once approved, start AEPS and verify your fingerprint.</div></div>'
+        + '<button onclick="initAEPSWizard()" class="btn-primary">Go to AEPS →</button>';
+      toast('AEPS activation submitted ✅', 's');
+    } else {
+      aepsFail(1, msg || 'Activation was not accepted. Check the details and try again.', 'aepsActivationOpen()');
+    }
+  } catch (e) {
+    aepsFail(1, e.name === 'AbortError' ? 'Server is slow to respond — wait a minute and check before resubmitting.' : 'Network error: ' + e.message, 'aepsActivationOpen()');
+  } finally { clearTimeout(t); }
+}
+
+// Add an "Activate AEPS" entry on the operator screen (Step 1)
+(function(){
+  var orig = renderAEPSStep1;
+  renderAEPSStep1 = async function(){
+    await orig();
+    var w = document.getElementById('aeps-wizard');
+    if (w && w.querySelector('#op-aadhaar') && !w.querySelector('#aeps-act-entry')) {
+      w.insertAdjacentHTML('beforeend',
+        '<button id="aeps-act-entry" onclick="aepsActivationOpen()" style="width:100%;margin-top:12px;padding:11px;border-radius:10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.3);color:#2563eb;cursor:pointer;font-size:.8rem;font-weight:700">🔐 First time? One-time AEPS Activation</button>');
+    }
+  };
+})();
+</script>
 </body>
 </html>
 
