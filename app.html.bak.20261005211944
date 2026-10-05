@@ -4473,7 +4473,7 @@ async function dmtVerifySender(){
   var btn=document.getElementById('dmt-verify-btn');
   var res=document.getElementById('dmt-sender-result');
   if(btn){ btn.disabled=true; btn.textContent='Verifying…'; }
-  if(res){ res.style.display='block'; res.innerHTML='<div style="font-size:.78rem;color:var(--muted2)">🔍 Verifying sender…</div>'; }
+  if(res){ res.style.display='block'; res.innerHTML='<div style="font-size:.78rem;color:var(--muted2)">🔍 Verifying sender with Eko…</div>'; }
   try{
     var r=await fetch(BANKME_API+'/eko/dmt/sender/'+mobile+'?agent_phone='+encodeURIComponent(agentPhone));
     var j=await r.json();
@@ -4775,7 +4775,7 @@ function dmtRenderSuccess(){
     '<div style="background:var(--bg3);border:1px solid var(--green);border-radius:14px;padding:16px">'
     +'<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">✅</div>'
     +'<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;color:var(--green)">Transfer Successful!</div>'
-    +'<div style="font-size:.68rem;color:var(--rtai);margin-top:2px">🛡️ NPCI DMT</div></div>'
+    +'<div style="font-size:.68rem;color:var(--rtai);margin-top:2px">🛡️ NPCI DMT via Eko</div></div>'
     +'<div style="background:var(--bg2);border-radius:10px;padding:10px;margin-bottom:10px">'
     +rows.map(function(r){
       return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.76rem">'
@@ -9911,7 +9911,7 @@ async function renderAEPSStep1(){
     + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:16px">'
     + '<div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📋 UIDAI / RBI Regulation</div>'
     + '<div style="font-size:.75rem;color:var(--muted2);line-height:1.55">The operator (you) must verify your own fingerprint once every day before the first customer transaction.</div></div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Agent ID ' + aepsEsc(AEPS_LIVE.userCode) + ' · ' + aepsEsc(AEPS_LIVE.opPhone) + '</div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + ' · ' + aepsEsc(AEPS_LIVE.opPhone) + '</div>'
     + '<label class="flabel">Your Aadhaar Number (Operator)</label>'
     + '<input class="finp" id="op-aadhaar" type="tel" maxlength="12" placeholder="12-digit Aadhaar number" style="letter-spacing:3px;font-size:1rem;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
     + '<div style="font-size:.7rem;color:var(--muted2);margin:-8px 0 14px;line-height:1.5">🔒 Sent encrypted for fingerprint verification only. Not stored.</div>'
@@ -10157,7 +10157,7 @@ function aepsShowResult(p, r){
     ? '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:11px 13px;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:.78rem;font-weight:700;color:var(--gold)">💸 Proceed to Cash Withdrawal?</div><button onclick="aepsDirectWithdraw()" style="flex-shrink:0;padding:8px 14px;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;color:#fff;font-size:.76rem;font-weight:700;cursor:pointer">Withdraw →</button></div>' : '';
   var inq = pending && txnId
     ? '<div style="font-size:.72rem;color:var(--muted2);margin-top:8px">Do not repeat the withdrawal. Transaction ID ' + aepsEsc(txnId) + '</div>'
-      + '<button id="aeps-recon-btn" onclick="aepsReconcile(\'' + aepsEsc(txnId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:var(--gold);cursor:pointer;font-size:.8rem;font-weight:700">🔄 Check status</button>'
+      + '<button id="aeps-recon-btn" onclick="aepsReconcile(\'' + aepsEsc(txnId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:var(--gold);cursor:pointer;font-size:.8rem;font-weight:700">🔄 Check status with Eko</button>'
       + '<div id="aeps-recon-msg" style="font-size:.76rem;margin-top:8px;text-align:center"></div>' : '';
 
   res.innerHTML = '<div style="background:var(--bg3);border:1px solid ' + color + ';border-radius:14px;padding:16px">'
@@ -10183,7 +10183,7 @@ async function aepsReconcile(tid){
     var x = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: tid }) });
     httpStatus = x.status; res = await x.json();
   } catch (e) { res = null; }
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Check status'; }
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Check status with Eko'; }
   if (!res || !res.success) {
     if (msg) { msg.style.color = '#ef4444'; msg.textContent = httpStatus === 401 ? 'Your session expired. Please log in again.' : ((res && res.error) || 'Could not check right now. Try again shortly.'); }
     return;
@@ -10292,8 +10292,8 @@ async function aepsActivationOpen(){
   w.innerHTML =
     '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:14px">'
     + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">🔐 One-time AEPS Activation</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Do this once per retailer. Your PAN and Aadhaar photos go to our banking partner for KYC. Approval may take some time; until approved, AEPS transactions will be declined.</div></div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Agent ID ' + aepsEsc(AEPS_LIVE.userCode) + '</div>'
+    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Do this once per retailer. Your PAN and Aadhaar photos go to Eko for KYC. Eko may take time to approve; until approved, AEPS transactions will be declined.</div></div>'
+    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + '</div>'
     + inp('act-account', 'Bank Account Number', 'Account number', 'type="tel" value="' + aepsEsc(acc) + '"')
     + inp('act-ifsc', 'IFSC Code', 'e.g. HDFC0001234', 'maxlength="11" style="text-transform:uppercase" value="' + aepsEsc(ifsc) + '"')
     + '<datalist id="act-devs">' + AEPS_DEVICES.map(function(d){ return '<option value="' + aepsEsc(d.label) + '">'; }).join('') + '</datalist>'
@@ -10308,7 +10308,7 @@ async function aepsActivationOpen(){
     + '<button type="button" onclick="aepsActGeo()" class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);margin-bottom:4px">📍 Capture my current location</button>'
     + '<div id="act-geo-lab" style="font-size:.72rem;color:var(--muted2);margin-bottom:10px">Not captured (be at the shop)</div>'
     + file('pan', 'PAN Card photo') + file('front', 'Aadhaar — front photo') + file('back', 'Aadhaar — back photo')
-    + '<button onclick="aepsActSubmit()" class="btn-primary" id="act-submit">Submit Activation →</button>'
+    + '<button onclick="aepsActSubmit()" class="btn-primary" id="act-submit">Submit Activation to Eko →</button>'
     + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
 }
 
@@ -10374,8 +10374,8 @@ async function aepsActSubmit(){
     if (ok) {
       var w = document.getElementById('aeps-wizard');
       w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
-        + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div><div style="font-weight:700;color:var(--green);font-size:1rem;margin-bottom:6px">Activation submitted</div>'
-        + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.55">' + aepsEsc(msg || 'BankMe will review and approve your AEPS service.') + ' Once approved, start AEPS and verify your fingerprint.</div></div>'
+        + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div><div style="font-weight:700;color:var(--green);font-size:1rem;margin-bottom:6px">Activation submitted to Eko</div>'
+        + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.55">' + aepsEsc(msg || 'Eko will review and approve your AEPS service.') + ' Once approved, start AEPS and verify your fingerprint.</div></div>'
         + '<button onclick="initAEPSWizard()" class="btn-primary">Go to AEPS →</button>';
       toast('AEPS activation submitted ✅', 's');
     } else {
@@ -10416,8 +10416,8 @@ async function aepsOnboardForm(){
     ? '<label class="flabel">State</label><select class="fsel" id="ob-state"><option value="">-- Select State --</option>' + states.map(function(s){ return '<option value="' + aepsEsc(s.name) + '">' + aepsEsc(s.name) + '</option>'; }).join('') + '</select>'
     : inp('ob-state', 'State', 'e.g. Tamil Nadu');
   w.innerHTML = '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:12px;margin-bottom:14px">'
-    + '<div style="font-weight:700;color:var(--gold);font-size:.88rem;margin-bottom:4px">BankMe AePS Activation (one time)</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your BankMe AePS is not activated yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div>' + (CU && CU.role === 'customer' ? '<div style="font-size:.74rem;color:var(--gold);margin-top:8px;line-height:1.5">⚠️ AEPS is for retailers. Completing this form upgrades your account from Customer to <strong>Retailer</strong>.</div>' : '') + '</div>'
+    + '<div style="font-weight:700;color:var(--gold);font-size:.88rem;margin-bottom:4px">Eko retailer onboarding (one time)</div>'
+    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your account has no Eko retailer code yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div>' + (CU && CU.role === 'customer' ? '<div style="font-size:.74rem;color:var(--gold);margin-top:8px;line-height:1.5">⚠️ AEPS is for retailers. Completing this form upgrades your account from Customer to <strong>Retailer</strong>.</div>' : '') + '</div>'
     + inp('ob-first', 'First name (as on PAN)', 'First name', first)
     + inp('ob-last', 'Last name (as on PAN)', 'Last name', last)
     + inp('ob-pan', 'PAN number', 'ABCDE1234F', prePan, 'maxlength="10" style="text-transform:uppercase;letter-spacing:2px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"')
@@ -10430,8 +10430,8 @@ async function aepsOnboardForm(){
     + inp('ob-district', 'District', 'District')
     + stateField
     + inp('ob-pin', 'Pincode', '6-digit pincode', '', 'type="tel" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
-    + '<div style="font-size:.7rem;color:var(--muted2);margin:-4px 0 12px">Mobile used: ' + aepsEsc((CU && (CU.phone || CU.mobile)) || '') + ' (your login number). 🔒 PAN is sent securely to our banking partner and not stored by BankMe.</div>'
-    + '<button onclick="aepsOnboardSubmit()" class="btn-primary">Activate my BankMe AePS →</button>';
+    + '<div style="font-size:.7rem;color:var(--muted2);margin:-4px 0 12px">Mobile used: ' + aepsEsc((CU && (CU.phone || CU.mobile)) || '') + ' (your login number). 🔒 PAN is sent securely to Eko and not stored by BankMe.</div>'
+    + '<button onclick="aepsOnboardSubmit()" class="btn-primary">Create my Eko retailer code →</button>';
 }
 
 async function aepsOnboardSubmit(){
@@ -10448,16 +10448,16 @@ async function aepsOnboardSubmit(){
   if (!body.dob) { toast('Select your date of birth', 'e'); return; }
   if (!body.shopName) { toast('Enter your shop name', 'e'); return; }
   if (!body.address.line || !body.address.city || !body.address.district || !body.address.state || !/^\d{6}$/.test(body.address.pincode)) { toast('Complete the address (line, city, district, state, 6-digit pincode)', 'e'); return; }
-  aepsBusy(1, 'Activating your BankMe AePS…', 'Verifying your PAN. This can take up to a minute');
+  aepsBusy(1, 'Creating your Eko retailer code…', 'Verifying your PAN with Eko. This can take up to a minute');
   var r = await aepsCall('POST', '/eko/aeps/v2/onboard', body);
-  if (!(r.ok && r.d && r.d.userCode)) return aepsFail(1, r.msg || 'We could not activate this retailer. Check the details match your PAN card.', 'aepsOnboardForm()');
+  if (!(r.ok && r.d && r.d.userCode)) return aepsFail(1, r.msg || 'Eko could not onboard this retailer. Check the details match your PAN card.', 'aepsOnboardForm()');
   AEPS_LIVE.userCode = String(r.d.userCode);
   if (r.d.promoted) await bmApplyRetailerUpgrade(r.d);
   try { if (CU) CU.ekoUserCode = AEPS_LIVE.userCode; } catch (e) {}
   var w = document.getElementById('aeps-wizard');
   w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
     + '<div style="font-size:2.4rem;margin-bottom:8px">✅</div>'
-    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">BankMe AePS activated</div>'
+    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Eko retailer code created</div>'
     + '<div style="font-size:.8rem;color:var(--muted2)">Your code: <strong style="color:var(--text)">' + aepsEsc(AEPS_LIVE.userCode) + '</strong></div>'
     + '<div style="font-size:.74rem;color:var(--muted2);margin-top:8px;line-height:1.5">Next: the one-time AEPS activation (shop details, documents and photos).</div></div>'
     + '<button onclick="aepsActivationOpen()" class="btn-primary">Continue to AEPS activation →</button>';
@@ -10619,10 +10619,10 @@ renderFraudEngine = function(){
   var el = document.getElementById('page-fraud'); if (!el) return;
   var controls = [
     ['🔐', 'Login required', 'Every AEPS, network and admin API call needs a valid login token'],
-    ['🚫', 'One wallet credit per transaction', 'A withdrawal can never credit the wallet twice'],
+    ['🚫', 'One wallet credit per Eko transaction', 'A withdrawal can never credit the wallet twice'],
     ['❄️', 'Frozen accounts blocked', 'Frozen retailers cannot run AEPS'],
     ['👆', 'Biometric + OTP', 'Aadhaar fingerprint on every AEPS call; customer SMS OTP above ₹5,000'],
-    ['⏳', 'Pending withdrawals', 'Held as pending until the bank network confirms; no cash credit before confirmation']
+    ['⏳', 'Pending withdrawals', 'Held as pending until Eko confirms; no cash credit before confirmation']
   ];
   el.innerHTML = '<div class="page-title" style="color:var(--red)">🔍 Fraud Engine</div>'
     + '<div class="page-sub">Controls enforced by the platform · real alerts only</div>'
@@ -10697,12 +10697,12 @@ initiateReversal = function(txnId){
 checkTxnStatus = async function(txnId){
   var t = (TXN_HISTORY || []).filter(function(x){ return x.txnId === txnId; })[0];
   if (!t || t.service !== 'aeps') { toast('Live status check is only available for AEPS withdrawals right now', 'i'); return; }
-  toast('Checking status…', 'i');
+  toast('Checking with Eko…', 'i');
   try {
     var r = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: txnId }) });
     var j = await r.json();
     if (!j || !j.success) { toast((j && j.error) || 'Could not check status', 'e'); return; }
-    if (j.state === 'success') { t.status = 'success'; toast('Confirmed' + (j.credited ? ' — wallet credited' : ''), 's'); }
+    if (j.state === 'success') { t.status = 'success'; toast('Confirmed by Eko' + (j.credited ? ' — wallet credited' : ''), 's'); }
     else if (j.state === 'failed') { t.status = 'failed'; toast('Failed at the bank — nothing credited', 'e'); }
     else toast('Still pending at the bank', 'i');
     renderDispute();
