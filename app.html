@@ -2325,6 +2325,7 @@ async function renderMyNetwork(){
   }catch(e){
     window._networkUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,joined:'Apr 2025',kyc:i%2===0?'verified':'pending',txns:[],rtaiScore:80+i,commissionEarned:2000*i});});
   }
+  await mergeBackendNetworkUsers();
   if(myTabs.length){
     showNetworkTab(myTabs[0]);
   } else {
@@ -10462,6 +10463,38 @@ async function aepsOnboardSubmit(){
     + '<div style="font-size:.8rem;color:var(--muted2)">Your code: <strong style="color:var(--text)">' + aepsEsc(AEPS_LIVE.userCode) + '</strong></div>'
     + '<div style="font-size:.74rem;color:var(--muted2);margin-top:8px;line-height:1.5">Next: the one-time AEPS activation (shop details, documents and photos).</div></div>'
     + '<button onclick="aepsActivationOpen()" class="btn-primary">Continue to AEPS activation →</button>';
+}
+</script>
+<script id="network-users-web">
+async function mergeBackendNetworkUsers(){
+  if (!CU || CU.role !== 'admin') return;
+  try {
+    var r = await authFetch(AEPS_API + '/admin/network/users');
+    var j = await r.json();
+    if (!j || !j.success || !Array.isArray(j.users)) return;
+    var all = window._networkUsers || [];
+    var byPhone = {};
+    all.forEach(function(u){ var p = String(u.phone || u.mobile || '').replace(/\D/g, '').slice(-10); if (p) byPhone[p] = u; });
+    j.users.forEach(function(b){
+      var p = String(b.phone || '').replace(/\D/g, '').slice(-10);
+      if (!p) return;
+      var ex = byPhone[p];
+      if (ex) {
+        if (!ex.role && b.role) ex.role = b.role;
+        if (!ex.phone) ex.phone = p;
+        if (ex.kyc !== 'verified' && b.kycStatus === 'verified') ex.kyc = 'verified';
+        return;
+      }
+      var d = b.createdAt ? new Date(b.createdAt) : null;
+      all.push({
+        uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
+        wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '',
+        joined: d ? d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'New',
+        txns: [], rtaiScore: 80, commissionEarned: 0, internalId: b.internalId || '', ekoUserCode: b.ekoUserCode || ''
+      });
+    });
+    window._networkUsers = all;
+  } catch (e) { /* backend list is a bonus: keep whatever the website already loaded */ }
 }
 </script>
 </body>
