@@ -8139,13 +8139,13 @@ async function fetchBBPSBill(silent){
         +'<div style="font-size:1.2rem">'+catObj.icon+'</div>'
         +'<div style="font-size:.82rem;font-weight:700;color:var(--text)">'+biller.name+'</div>'
         +'</div>'
-        +'<div style="font-size:.76rem;color:var(--muted2)">No bill amount available automatically for this account right now (either nothing is due, or this biller does not support auto bill-fetch). Enter the amount manually below.</div>';
+        +'<div style="font-size:.76rem;color:var(--muted2)">Instant bill lookup is not available for this biller. Check the amount on the customer bill (SMS, paper bill or the electricity board app) and enter that exact amount below.</div>';
       var amtEl0=document.getElementById('bbps-amount');
       if(amtEl0) amtEl0.value='';
       var totalEl0=document.getElementById('bbps-total-amt');
       if(totalEl0) totalEl0.textContent='₹—';
       if(as) as.style.display='block';
-      if(!silent) toast('No bill amount available — enter it manually','s');
+      if(!silent) toast('Bill lookup not available for this biller — enter the amount from the customer bill','s');
       return;
     }
 
