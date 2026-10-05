@@ -4811,6 +4811,7 @@ async function renderAssign(){
   }catch(e){
     window._assignUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,assignedTo:i>3?'demo-2':null});});
   }
+  await mergeBackendAssignUsers();
   showAssignTab('retailer');
 }
 
@@ -4926,8 +4927,9 @@ async function doAssign(userUid, userRole){
   var sel=document.getElementById('assign-sel-'+userUid);
   var parentUid=sel?sel.value:'';
   try{
-    if(db&&userUid&&userUid.indexOf('demo-')!==0){
-      await db.collection('bankme_users').doc(userUid).update({assignedTo:parentUid||null});
+    if(db&&userUid&&userUid.indexOf('demo-')!==0&&userUid.indexOf('be-')!==0){
+      // a parent that only exists in the backend has no website record to point at: the backend link is the source of truth then
+      await db.collection('bankme_users').doc(userUid).update({assignedTo:(parentUid&&parentUid.indexOf('be-')===0)?null:(parentUid||null)});
     }
     await syncLinkToBackend(userUid, parentUid);
     // Update local copy
@@ -10495,6 +10497,36 @@ async function mergeBackendNetworkUsers(){
     });
     window._networkUsers = all;
   } catch (e) { /* backend list is a bonus: keep whatever the website already loaded */ }
+}
+</script>
+<script id="assign-users-web">
+async function mergeBackendAssignUsers(){
+  if (!CU || CU.role !== 'admin') return;
+  try {
+    var r = await authFetch(AEPS_API + '/admin/network/users');
+    var j = await r.json();
+    if (!j || !j.success || !Array.isArray(j.users)) return;
+    var all = window._assignUsers || [];
+    var norm = function(p){ return String(p || '').replace(/\D/g, '').slice(-10); };
+    var byPhone = {};
+    all.forEach(function(u){ var p = norm(u.phone || u.mobile); if (p) byPhone[p] = u; });
+    j.users.forEach(function(b){
+      var p = norm(b.phone); if (!p) return;
+      if (!byPhone[p]) {
+        var nu = { uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
+          wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '', assignedTo: null };
+        all.push(nu); byPhone[p] = nu;
+      } else if (!byPhone[p].role && b.role) { byPhone[p].role = b.role; }
+    });
+    // parent links held in the backend win over older website values
+    j.users.forEach(function(b){
+      if (!b.linked) return;
+      var child = byPhone[norm(b.phone)]; if (!child) return;
+      var par = b.parentPhone ? byPhone[norm(b.parentPhone)] : null;
+      child.assignedTo = par ? par.uid : null;
+    });
+    window._assignUsers = all;
+  } catch (e) { /* keep whatever the website already loaded */ }
 }
 </script>
 </body>
