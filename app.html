@@ -4878,6 +4878,49 @@ function showAssignTab(type){
   document.getElementById('assign-content').innerHTML=html;
 }
 
+// ── Network + commission -> backend (AEPS commission split) ──
+function aepsNetPhone(p){ return String(p||'').replace(/\D/g,'').slice(-10); }
+async function aepsPostAdmin(path, body){
+  try {
+    var r = await authFetch(BACKEND_URL + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (r.status === 401) return { success:false, error:'Session expired - log in again' };
+    return await r.json();
+  } catch(e){ return { success:false, error:e.message }; }
+}
+async function syncLinkToBackend(userUid, parentUid){
+  var all = window._assignUsers || [];
+  var child = all.filter(function(u){ return u.uid===userUid; })[0];
+  var parent = parentUid ? all.filter(function(u){ return u.uid===parentUid; })[0] : null;
+  if (!child || !child.phone) { toast('Saved here, but this user has no mobile number so the backend was not updated','e'); return; }
+  if (parentUid && (!parent || !parent.phone)) { toast('Saved here, but the parent has no mobile number so the backend was not updated','e'); return; }
+  var j = await aepsPostAdmin('/admin/network/link', { childPhone: aepsNetPhone(child.phone), parentPhone: parent ? aepsNetPhone(parent.phone) : '' });
+  if (!j.success) toast('Saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
+}
+async function syncCommissionToBackend(){
+  if (!window._commData) return;
+  var j = await aepsPostAdmin('/admin/commission', { data: window._commData });
+  if (!j.success) toast('Commission saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
+}
+// ONE-TIME: run in the browser console while logged in as admin:  syncNetworkToBackend()
+async function syncNetworkToBackend(){
+  var all = window._assignUsers;
+  if (!all) {
+    try { var snap = await db.collection('bankme_users').get(); all = []; snap.forEach(function(d){ var u=d.data(); u.uid=d.id; all.push(u); }); }
+    catch(e){ console.log('Cannot load users', e); toast('Could not load users','e'); return; }
+  }
+  var byUid = {}; all.forEach(function(u){ byUid[u.uid] = u; });
+  var links = [], skipped = 0;
+  all.forEach(function(u){
+    if (!u.assignedTo) return;
+    var p = byUid[u.assignedTo];
+    if (u.phone && p && p.phone) links.push({ childPhone: aepsNetPhone(u.phone), parentPhone: aepsNetPhone(p.phone) }); else skipped++;
+  });
+  var j1 = await aepsPostAdmin('/admin/network/sync', { links: links });
+  var j2 = window._commData ? await aepsPostAdmin('/admin/commission', { data: window._commData }) : { success:false, error:'Open the Commission page once, then run this again' };
+  console.log('links found:', links.length, 'skipped (no phone):', skipped, j1, '| commission:', j2);
+  toast('Network: ' + (j1.success ? j1.synced + ' links synced' : 'FAILED (' + (j1.error||'') + ')') + ' · Commission: ' + (j2.success ? 'saved' : 'not saved'), (j1.success && j2.success) ? 's' : 'e');
+}
+
 async function doAssign(userUid, userRole){
   var sel=document.getElementById('assign-sel-'+userUid);
   var parentUid=sel?sel.value:'';
@@ -4885,6 +4928,7 @@ async function doAssign(userUid, userRole){
     if(db&&userUid&&userUid.indexOf('demo-')!==0){
       await db.collection('bankme_users').doc(userUid).update({assignedTo:parentUid||null});
     }
+    await syncLinkToBackend(userUid, parentUid);
     // Update local copy
     var all=window._assignUsers||[];
     for(var i=0;i<all.length;i++){
@@ -8363,6 +8407,7 @@ function collectCommissionData(){
 function saveAllCommission(){
   collectCommissionData();
   try{ localStorage.setItem('bankme_commdata', JSON.stringify(window._commData)); }catch(e){}
+  syncCommissionToBackend();
   if(db){
     db.collection('bankme_config').doc('commission_v2').set(window._commData)
     .then(function(){ toast('✅ Commission data saved!','s'); })
@@ -9727,7 +9772,7 @@ async function aepsCall(method, path, body){
     var j = await r.json();
     var d = j && j.data ? j.data : null;
     var msg = typeof j.error === 'string' ? j.error : (j.error && j.error.message) || (d && d.message) || '';
-    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, creditFailed: !!j.creditFailed };
+    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, commission: j.commission, creditFailed: !!j.creditFailed };
   } catch (e) {
     return { ok: false, d: null, code: null, msg: e.name === 'AbortError' ? 'Server is waking up — please try again in a minute' : 'Network error: ' + e.message };
   } finally { clearTimeout(t); }
@@ -10106,6 +10151,7 @@ function aepsShowResult(p, r){
       var chipEl = document.getElementById('wallet-chip'); if (chipEl) chipEl.textContent = '\u20B9' + fmtN(CU.wallet);
     }
     if (r.credited) rows.push(['Credited to your wallet', '\u20B9' + fmtN(r.credited)]);
+    if (r.commission) rows.push(['Commission earned', '\u20B9' + fmtN(r.commission)]);
     if (r.creditFailed) rows.push(['\u26A0\uFE0F Wallet credit', 'FAILED - contact support with Transaction ID ' + aepsEsc(txnId)]);
   }
   if (p.type === 'withdrawal' && success && txnId) {
