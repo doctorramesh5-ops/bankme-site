@@ -9720,13 +9720,14 @@ function aepsToday(){ return new Date().toISOString().slice(0,10); }
 async function aepsCall(method, path, body){
   var c = new AbortController(); var t = setTimeout(function(){ c.abort(); }, 70000);
   try {
-    var r = await fetch(AEPS_API + path, { method: method, signal: c.signal,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    var r = await authFetch(AEPS_API + path, { method: method, signal: c.signal,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined });
+    if (r.status === 401) return { ok: false, d: null, code: null, msg: 'Your session expired. Please log in again.' };
     var j = await r.json();
     var d = j && j.data ? j.data : null;
     var msg = typeof j.error === 'string' ? j.error : (j.error && j.error.message) || (d && d.message) || '';
-    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg };
+    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, creditFailed: !!j.creditFailed };
   } catch (e) {
     return { ok: false, d: null, code: null, msg: e.name === 'AbortError' ? 'Server is waking up — please try again in a minute' : 'Network error: ' + e.message };
   } finally { clearTimeout(t); }
@@ -10092,6 +10093,14 @@ function aepsShowResult(p, r){
   }
 
   var txnId = d.tid ? String(d.tid) : '';
+  if (p.type === 'withdrawal' && success) {
+    if (r.nb !== undefined && r.nb !== null && CU) {
+      CU.wallet = r.nb;
+      var chipEl = document.getElementById('wallet-chip'); if (chipEl) chipEl.textContent = '\u20B9' + fmtN(CU.wallet);
+    }
+    if (r.credited) rows.push(['Credited to your wallet', '\u20B9' + fmtN(r.credited)]);
+    if (r.creditFailed) rows.push(['\u26A0\uFE0F Wallet credit', 'FAILED - contact support with Transaction ID ' + aepsEsc(txnId)]);
+  }
   if (p.type === 'withdrawal' && success && txnId) {
     try {
       TXN_HISTORY.push({ id: txnId, service: 'aeps', title: 'AEPS Cash Withdrawal', amount: parseFloat(d.amount || p.amount), type: 'credit',
