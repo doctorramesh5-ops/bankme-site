@@ -8115,12 +8115,18 @@ async function fetchBBPSBill(silent){
     var r=await fetch(BANKME_API+'/eko/bbps/fetch-bill?'+qs);
     var j=await r.json();
     if(j&&j.success===false){ throw new Error(j.message||'Could not fetch bill'); }
-    var d=(j&&j.data)||j||{};
-    var hasAmount=(d.amount!=null||d.bill_amount!=null);
-    var billAmt=Number(d.amount||d.bill_amount||0);
-    var consumerName=d.customerName||d.customer_name||d.consumer_name||d.customerFullName||'';
-    var dueDateStr=d.dueDate||d.due_date||'';
-    var billNumber=d.billNumber||d.bill_number||d.bill_id||('BILL'+consumer.slice(-6));
+    var d0=(j&&j.data)||j||{};
+    try{ console.log('BBPS fetch raw', JSON.stringify(j)); }catch(e){}
+    var d=d0;
+    if(d0&&d0.data&&typeof d0.data==='object'&&!Array.isArray(d0.data)) d=Object.assign({},d0,d0.data);
+    var pickAmt=function(o){ var ks=['amount','bill_amount','billamount','billAmount','amount_to_pay','amountpayable','dueamount','due_amount','totalamount']; for(var i=0;i<ks.length;i++){ var v=o[ks[i]]; if(v!=null&&v!==''&&!isNaN(Number(String(v).replace(/,/g,'')))) return Number(String(v).replace(/,/g,'')); } return null; };
+    var amtVal=pickAmt(d);
+    var hasAmount=(amtVal!=null);
+    var billAmt=hasAmount?amtVal:0;
+    if(!hasAmount && d0 && d0.response_status_id!=null && Number(d0.response_status_id)!==0 && d0.message){ throw new Error(d0.message); }
+    var consumerName=d.utilitycustomername||d.customername||d.customerName||d.customer_name||d.consumer_name||d.customerFullName||'';
+    var dueDateStr=d.duedate||d.dueDate||d.due_date||'';
+    var billNumber=d.billnumber||d.billNumber||d.bill_number||d.bill_id||('BILL'+consumer.slice(-6));
 
     window._bbpsFetchedAmt=hasAmount?billAmt:null;
 
