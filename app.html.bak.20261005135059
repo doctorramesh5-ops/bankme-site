@@ -2325,7 +2325,6 @@ async function renderMyNetwork(){
   }catch(e){
     window._networkUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,joined:'Apr 2025',kyc:i%2===0?'verified':'pending',txns:[],rtaiScore:80+i,commissionEarned:2000*i});});
   }
-  await mergeBackendNetworkUsers();
   if(myTabs.length){
     showNetworkTab(myTabs[0]);
   } else {
@@ -4811,7 +4810,6 @@ async function renderAssign(){
   }catch(e){
     window._assignUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,assignedTo:i>3?'demo-2':null});});
   }
-  await mergeBackendAssignUsers();
   showAssignTab('retailer');
 }
 
@@ -4880,58 +4878,13 @@ function showAssignTab(type){
   document.getElementById('assign-content').innerHTML=html;
 }
 
-// ── Network + commission -> backend (AEPS commission split) ──
-function aepsNetPhone(p){ return String(p||'').replace(/\D/g,'').slice(-10); }
-async function aepsPostAdmin(path, body){
-  try {
-    var r = await authFetch(BACKEND_URL + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (r.status === 401) return { success:false, error:'Session expired - log in again' };
-    return await r.json();
-  } catch(e){ return { success:false, error:e.message }; }
-}
-async function syncLinkToBackend(userUid, parentUid){
-  var all = window._assignUsers || [];
-  var child = all.filter(function(u){ return u.uid===userUid; })[0];
-  var parent = parentUid ? all.filter(function(u){ return u.uid===parentUid; })[0] : null;
-  if (!child || !child.phone) { toast('Saved here, but this user has no mobile number so the backend was not updated','e'); return; }
-  if (parentUid && (!parent || !parent.phone)) { toast('Saved here, but the parent has no mobile number so the backend was not updated','e'); return; }
-  var j = await aepsPostAdmin('/admin/network/link', { childPhone: aepsNetPhone(child.phone), parentPhone: parent ? aepsNetPhone(parent.phone) : '' });
-  if (!j.success) toast('Saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
-}
-async function syncCommissionToBackend(){
-  if (!window._commData) return;
-  var j = await aepsPostAdmin('/admin/commission', { data: window._commData });
-  if (!j.success) toast('Commission saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
-}
-// ONE-TIME: run in the browser console while logged in as admin:  syncNetworkToBackend()
-async function syncNetworkToBackend(){
-  var all = window._assignUsers;
-  if (!all) {
-    try { var snap = await db.collection('bankme_users').get(); all = []; snap.forEach(function(d){ var u=d.data(); u.uid=d.id; all.push(u); }); }
-    catch(e){ console.log('Cannot load users', e); toast('Could not load users','e'); return; }
-  }
-  var byUid = {}; all.forEach(function(u){ byUid[u.uid] = u; });
-  var links = [], skipped = 0;
-  all.forEach(function(u){
-    if (!u.assignedTo) return;
-    var p = byUid[u.assignedTo];
-    if (u.phone && p && p.phone) links.push({ childPhone: aepsNetPhone(u.phone), parentPhone: aepsNetPhone(p.phone) }); else skipped++;
-  });
-  var j1 = await aepsPostAdmin('/admin/network/sync', { links: links });
-  var j2 = window._commData ? await aepsPostAdmin('/admin/commission', { data: window._commData }) : { success:false, error:'Open the Commission page once, then run this again' };
-  console.log('links found:', links.length, 'skipped (no phone):', skipped, j1, '| commission:', j2);
-  toast('Network: ' + (j1.success ? j1.synced + ' links synced' : 'FAILED (' + (j1.error||'') + ')') + ' · Commission: ' + (j2.success ? 'saved' : 'not saved'), (j1.success && j2.success) ? 's' : 'e');
-}
-
 async function doAssign(userUid, userRole){
   var sel=document.getElementById('assign-sel-'+userUid);
   var parentUid=sel?sel.value:'';
   try{
-    if(db&&userUid&&userUid.indexOf('demo-')!==0&&userUid.indexOf('be-')!==0){
-      // a parent that only exists in the backend has no website record to point at: the backend link is the source of truth then
-      await db.collection('bankme_users').doc(userUid).update({assignedTo:(parentUid&&parentUid.indexOf('be-')===0)?null:(parentUid||null)});
+    if(db&&userUid&&userUid.indexOf('demo-')!==0){
+      await db.collection('bankme_users').doc(userUid).update({assignedTo:parentUid||null});
     }
-    await syncLinkToBackend(userUid, parentUid);
     // Update local copy
     var all=window._assignUsers||[];
     for(var i=0;i<all.length;i++){
@@ -6670,7 +6623,7 @@ function renderProfile(skipFetch){
     +'<div style="position:absolute;bottom:-2px;right:-2px;background:var(--rtai);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:.6rem;border:2px solid var(--bg1)">📷</div>'
     +'</div>'
     +'<div>'
-    +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+bmDisplayName()+'</div>'
+    +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+CU.name+'</div>'
     +'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
     +'<span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;background:'+rc.color+'22;color:'+rc.color+';border:1px solid '+rc.color+'44">'+rc.label+'</span>'
     +'<span style="font-size:.68rem;background:rgba(0,212,170,.1);color:var(--rtai);border:1px solid rgba(0,212,170,.3);padding:2px 7px;border-radius:100px;font-weight:600">RTAI '+(CU.rtaiScore||85)+'</span>'
@@ -6681,7 +6634,7 @@ function renderProfile(skipFetch){
     +'<div style="font-size:.75rem;color:var(--muted2);margin-top:2px">'+(CU.kyc==='verified'?'Aadhaar linked · RBI compliant':'Complete eKYC to access all services')+'</div></div></div>'
     +'<div class="pcard" style="margin-bottom:14px">'
     +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:10px;color:var(--text)">👤 Account Details</div>'
-    +[['Name (as per PAN)',CU.panName||(bmNameOk(CU.name)?CU.name:'Not verified \u2014 complete KYC')],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
+    +[['Name (as per PAN)',CU.panName||CU.name],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
       return '<div class="prow"><span style="color:var(--muted2);font-size:.85rem">'+r[0]+'</span><span style="color:var(--text);font-weight:500;font-size:.85rem">'+r[1]+'</span></div>';
     }).join('')
     +'</div>'
@@ -8410,7 +8363,6 @@ function collectCommissionData(){
 function saveAllCommission(){
   collectCommissionData();
   try{ localStorage.setItem('bankme_commdata', JSON.stringify(window._commData)); }catch(e){}
-  syncCommissionToBackend();
   if(db){
     db.collection('bankme_config').doc('commission_v2').set(window._commData)
     .then(function(){ toast('✅ Commission data saved!','s'); })
@@ -8718,6 +8670,16 @@ function renderDispute(){
     allTxns = window._allNetworkTxns.slice();
   }
 
+  // Add mock dispute data for demo
+  if(!allTxns.length){
+    allTxns = [
+      {txnId:'TXN001',title:'AEPS Cash Withdrawal',service:'aeps',amount:2000,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Ramesh K.',userRole:'retailer',phone:'9360097511',disputeStatus:'open'},
+      {txnId:'TXN002',title:'Mobile Recharge',service:'recharge',amount:499,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Priya S.',userRole:'customer',phone:'8248839950',disputeStatus:'none'},
+      {txnId:'TXN003',title:'DMT Transfer',service:'dmt',amount:5000,type:'debit',status:'success',date:new Date().toLocaleDateString('en-IN'),userName:'Karthik M.',userRole:'distributor',phone:'7890123456',disputeStatus:'none'},
+      {txnId:'TXN004',title:'Bill Payment - Electricity',service:'bbps',amount:1200,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Suresh R.',userRole:'retailer',phone:'9876543210',disputeStatus:'chargeback'},
+      {txnId:'TXN005',title:'UPI Cash Out',service:'upi',amount:3000,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Meena V.',userRole:'customer',phone:'8765432109',disputeStatus:'reversal'},
+    ];
+  }
 
   // Filter
   var filtered = allTxns.filter(function(t){
@@ -9765,7 +9727,7 @@ async function aepsCall(method, path, body){
     var j = await r.json();
     var d = j && j.data ? j.data : null;
     var msg = typeof j.error === 'string' ? j.error : (j.error && j.error.message) || (d && d.message) || '';
-    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, commission: j.commission, creditFailed: !!j.creditFailed };
+    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, creditFailed: !!j.creditFailed };
   } catch (e) {
     return { ok: false, d: null, code: null, msg: e.name === 'AbortError' ? 'Server is waking up — please try again in a minute' : 'Network error: ' + e.message };
   } finally { clearTimeout(t); }
@@ -9798,10 +9760,9 @@ async function aepsDiscoverRD(){
 }
 
 // returns {xml} or {error}
-async function aepsCaptureFinger(wadh, otp){
-  otp = String(otp || '').replace(/\D/g, '');
+async function aepsCaptureFinger(wadh){
   if (!AEPS_RD.base && !(await aepsDiscoverRD())) return { error: 'No biometric device found. Plug in the scanner, install its RD Service driver, and try again (Windows PC + Chrome/Edge).' };
-  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" otp="' + otp + '" posh="UNKNOWN" env="P"/></PidOptions>';
+  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" posh="UNKNOWN" env="P"/></PidOptions>';
   try {
     var r = await aepsFetchTO(AEPS_RD.base + AEPS_RD.capture, { method: 'CAPTURE', body: opts }, 30000);
     var xml = await r.text();
@@ -9905,7 +9866,7 @@ async function renderAEPSStep1(){
   var okId = await aepsLoadIdentity();
   await aepsLoadBanks();
   if (!okId) {
-    return aepsOnboardForm();
+    return aepsFail(1, 'Your account is not linked to an Eko retailer code yet, so AEPS cannot run. Contact BankMe support.', 'initAEPSWizard()');
   }
   w.innerHTML = aepsStepBar(1)
     + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:16px">'
@@ -10081,7 +10042,6 @@ async function processAEPSCustomer(){
     + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
     + '<div style="font-size:2.5rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:.95rem;margin-bottom:4px">Customer Finger Placement</div>'
     + '<div style="color:var(--muted2);font-size:.78rem">Aadhaar XXXX XXXX ' + aad.slice(-4) + ' · ' + aepsEsc(bankName) + '</div></div>'
-    + (txnOtpId ? '<label class="flabel">Customer\'s 6-digit SMS OTP</label><input class="finp" id="m-txn-otp" type="tel" maxlength="6" placeholder="OTP sent to the customer\'s Aadhaar-linked mobile" style="letter-spacing:6px;font-size:1.2rem;font-weight:700;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>' : '')
     + '<button onclick="aepsCustomerGo()" class="btn-primary">👆 Scan Customer Fingerprint</button>'
     + '<button onclick="renderAEPSStep3()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
   AEPS_LIVE.pending = { type: type, amount: amount, base: base, txnOtpId: txnOtpId, bankName: bankName };
@@ -10089,13 +10049,8 @@ async function processAEPSCustomer(){
 
 async function aepsCustomerGo(){
   var p = AEPS_LIVE.pending; if (!p) return renderAEPSStep3();
-  var txnOtp = '';
-  if (p.txnOtpId) {
-    txnOtp = ((document.getElementById('m-txn-otp') || {}).value || '').replace(/\D/g, '');
-    if (txnOtp.length !== 6) { toast("Enter the customer's 6-digit SMS OTP", 'e'); return; }
-  }
   aepsBusy(3, 'Scanning…', 'Ask the customer to keep the finger on the device');
-  var cap = await aepsCaptureFinger('', txnOtp);
+  var cap = await aepsCaptureFinger('');
   if (cap.error) return aepsFail(3, cap.error, 'renderAEPSStep3()');
   aepsBusy(3, 'Processing AEPS transaction…', 'Contacting ' + p.bankName + ' — do not close this window');
   var body = Object.assign({}, p.base, { piddata: cap.xml });
@@ -10144,7 +10099,6 @@ function aepsShowResult(p, r){
       var chipEl = document.getElementById('wallet-chip'); if (chipEl) chipEl.textContent = '\u20B9' + fmtN(CU.wallet);
     }
     if (r.credited) rows.push(['Credited to your wallet', '\u20B9' + fmtN(r.credited)]);
-    if (r.commission) rows.push(['Commission earned', '\u20B9' + fmtN(r.commission)]);
     if (r.creditFailed) rows.push(['\u26A0\uFE0F Wallet credit', 'FAILED - contact support with Transaction ID ' + aepsEsc(txnId)]);
   }
   if (p.type === 'withdrawal' && success && txnId) {
@@ -10156,9 +10110,7 @@ function aepsShowResult(p, r){
   var wd = (success && p.type !== 'withdrawal')
     ? '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:11px 13px;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:.78rem;font-weight:700;color:var(--gold)">💸 Proceed to Cash Withdrawal?</div><button onclick="aepsDirectWithdraw()" style="flex-shrink:0;padding:8px 14px;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;color:#fff;font-size:.76rem;font-weight:700;cursor:pointer">Withdraw →</button></div>' : '';
   var inq = pending && txnId
-    ? '<div style="font-size:.72rem;color:var(--muted2);margin-top:8px">Do not repeat the withdrawal. Transaction ID ' + aepsEsc(txnId) + '</div>'
-      + '<button id="aeps-recon-btn" onclick="aepsReconcile(\'' + aepsEsc(txnId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:var(--gold);cursor:pointer;font-size:.8rem;font-weight:700">🔄 Check status with Eko</button>'
-      + '<div id="aeps-recon-msg" style="font-size:.76rem;margin-top:8px;text-align:center"></div>' : '';
+    ? '<div style="font-size:.72rem;color:var(--muted2);margin-top:8px">Do not repeat the withdrawal. Check status with Transaction ID ' + aepsEsc(txnId) + ' or contact support.</div>' : '';
 
   res.innerHTML = '<div style="background:var(--bg3);border:1px solid ' + color + ';border-radius:14px;padding:16px">'
     + '<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">' + (success ? '✅' : pending ? '⏳' : '❌') + '</div>'
@@ -10172,36 +10124,6 @@ function aepsShowResult(p, r){
     + '<button onclick="document.getElementById(\'svc-modal\').classList.remove(\'show\')" style="flex:1;padding:9px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;font-size:.78rem;font-weight:700">Close</button>'
     + '</div></div>';
   toast(success ? labels[p.type] + ' successful ✅' : pending ? 'Withdrawal pending ⏳' : (r.msg || 'Transaction failed'), success ? 's' : 'e');
-}
-
-async function aepsReconcile(tid){
-  var btn = document.getElementById('aeps-recon-btn'), msg = document.getElementById('aeps-recon-msg');
-  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-  // this route answers { success, state, ... } directly (not Eko-shaped), so call it with authFetch once
-  var res = null, httpStatus = 0;
-  try {
-    var x = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: tid }) });
-    httpStatus = x.status; res = await x.json();
-  } catch (e) { res = null; }
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Check status with Eko'; }
-  if (!res || !res.success) {
-    if (msg) { msg.style.color = '#ef4444'; msg.textContent = httpStatus === 401 ? 'Your session expired. Please log in again.' : ((res && res.error) || 'Could not check right now. Try again shortly.'); }
-    return;
-  }
-  if (res.state === 'success') {
-    if (res.newBalance !== undefined && res.newBalance !== null && CU) {
-      CU.wallet = res.newBalance;
-      var chip = document.getElementById('wallet-chip'); if (chip) chip.textContent = '\u20B9' + fmtN(CU.wallet);
-    }
-    if (msg) { msg.style.color = 'var(--green)'; msg.textContent = res.credited ? '✅ Confirmed — ₹' + fmtN(res.credited) + ' credited to your wallet' : '✅ Confirmed — already credited'; }
-    if (btn) btn.style.display = 'none';
-    toast('Withdrawal confirmed ✅', 's');
-  } else if (res.state === 'failed') {
-    if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ The withdrawal failed at the bank. Nothing was credited.'; }
-    if (btn) btn.style.display = 'none';
-  } else {
-    if (msg) { msg.style.color = 'var(--gold)'; msg.textContent = '⏳ Still waiting for the bank. Check again in a few minutes.'; }
-  }
 }
 
 function aepsBackToForm(keep){
@@ -10266,7 +10188,7 @@ async function aepsActivationOpen(){
   aepsBusy(1, 'Loading activation form…', 'Fetching shop types and states from Eko');
   var okId = await aepsLoadIdentity();
   await aepsActLoadLists();
-  if (!okId) return aepsOnboardForm();
+  if (!okId) return aepsFail(1, 'Your account has no Eko retailer code yet. Complete retailer onboarding first.', 'initAEPSWizard()');
   AEPS_ACT.files = {}; AEPS_ACT.geo = '';
   var acc = '', ifsc = '';
   try {
@@ -10398,473 +10320,6 @@ async function aepsActSubmit(){
     }
   };
 })();
-</script>
-<script id="aeps-onboard-web">
-async function aepsOnboardForm(){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
-  try { if (typeof aepsActLoadLists === 'function') await aepsActLoadLists(); } catch (e) {}
-  var states = (typeof AEPS_ACT !== 'undefined' && AEPS_ACT.states) || [];
-  var kyc = await bmLoadKyc();
-  var fullName = kyc.panName || (bmNameOk(CU && CU.name) ? CU.name : '');
-  var nm = String(fullName).trim().split(/\s+/).filter(Boolean);
-  var first = nm.length > 1 ? nm.slice(0, -1).join(' ') : (nm[0] || ''), last = nm.length > 1 ? nm[nm.length - 1] : '';
-  var prePan = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(kyc.panNumber || '').toUpperCase()) ? String(kyc.panNumber).toUpperCase() : '';
-  var d8 = String(kyc.dob || '').replace(/\D/g, ''), preDob = d8.length === 8 ? d8.slice(4) + '-' + d8.slice(2, 4) + '-' + d8.slice(0, 2) : '';
-  function inp(id, label, ph, val, extra){ return '<label class="flabel">' + label + '</label><input class="finp" id="' + id + '" placeholder="' + (ph || '') + '" value="' + aepsEsc(val || '') + '" ' + (extra || '') + '/>'; }
-  var stateField = states.length
-    ? '<label class="flabel">State</label><select class="fsel" id="ob-state"><option value="">-- Select State --</option>' + states.map(function(s){ return '<option value="' + aepsEsc(s.name) + '">' + aepsEsc(s.name) + '</option>'; }).join('') + '</select>'
-    : inp('ob-state', 'State', 'e.g. Tamil Nadu');
-  w.innerHTML = '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:12px;margin-bottom:14px">'
-    + '<div style="font-weight:700;color:var(--gold);font-size:.88rem;margin-bottom:4px">Eko retailer onboarding (one time)</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your account has no Eko retailer code yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div>' + (CU && CU.role === 'customer' ? '<div style="font-size:.74rem;color:var(--gold);margin-top:8px;line-height:1.5">⚠️ AEPS is for retailers. Completing this form upgrades your account from Customer to <strong>Retailer</strong>.</div>' : '') + '</div>'
-    + inp('ob-first', 'First name (as on PAN)', 'First name', first)
-    + inp('ob-last', 'Last name (as on PAN)', 'Last name', last)
-    + inp('ob-pan', 'PAN number', 'ABCDE1234F', prePan, 'maxlength="10" style="text-transform:uppercase;letter-spacing:2px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"')
-    + inp('ob-email', 'Email', 'name@example.com', (CU && CU.email) || '', 'type="email"')
-    + '<label class="flabel">Date of birth</label><input class="finp" id="ob-dob" type="date" value="' + aepsEsc(preDob) + '"/>'
-    + inp('ob-shop', 'Shop name', 'Shop name', (CU && CU.shopName) || '')
-    + inp('ob-line', 'Address line', 'Shop / door no, street')
-    + inp('ob-area', 'Area / locality', 'Area')
-    + inp('ob-city', 'City', 'City')
-    + inp('ob-district', 'District', 'District')
-    + stateField
-    + inp('ob-pin', 'Pincode', '6-digit pincode', '', 'type="tel" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
-    + '<div style="font-size:.7rem;color:var(--muted2);margin:-4px 0 12px">Mobile used: ' + aepsEsc((CU && (CU.phone || CU.mobile)) || '') + ' (your login number). 🔒 PAN is sent securely to Eko and not stored by BankMe.</div>'
-    + '<button onclick="aepsOnboardSubmit()" class="btn-primary">Create my Eko retailer code →</button>';
-}
-
-async function aepsOnboardSubmit(){
-  function v(id){ return ((document.getElementById(id) || {}).value || '').trim(); }
-  var body = {
-    firstName: v('ob-first'), lastName: v('ob-last'), panNumber: v('ob-pan').toUpperCase(), email: v('ob-email'),
-    dob: v('ob-dob'), shopName: v('ob-shop'),
-    address: { line: v('ob-line'), area: v('ob-area'), city: v('ob-city'), district: v('ob-district'), state: v('ob-state'), pincode: v('ob-pin') }
-  };
-  if (!body.firstName || !body.lastName) { toast('Enter your first and last name as on your PAN card', 'e'); return; }
-  if (!bmNameOk(body.firstName + ' ' + body.lastName)) { toast('Enter your real name as on the PAN card', 'e'); return; }
-  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(body.panNumber)) { toast('Enter a valid PAN (ABCDE1234F)', 'e'); return; }
-  if (!/^\S+@\S+\.\S+$/.test(body.email)) { toast('Enter a valid email', 'e'); return; }
-  if (!body.dob) { toast('Select your date of birth', 'e'); return; }
-  if (!body.shopName) { toast('Enter your shop name', 'e'); return; }
-  if (!body.address.line || !body.address.city || !body.address.district || !body.address.state || !/^\d{6}$/.test(body.address.pincode)) { toast('Complete the address (line, city, district, state, 6-digit pincode)', 'e'); return; }
-  aepsBusy(1, 'Creating your Eko retailer code…', 'Verifying your PAN with Eko. This can take up to a minute');
-  var r = await aepsCall('POST', '/eko/aeps/v2/onboard', body);
-  if (!(r.ok && r.d && r.d.userCode)) return aepsFail(1, r.msg || 'Eko could not onboard this retailer. Check the details match your PAN card.', 'aepsOnboardForm()');
-  AEPS_LIVE.userCode = String(r.d.userCode);
-  if (r.d.promoted) await bmApplyRetailerUpgrade(r.d);
-  try { if (CU) CU.ekoUserCode = AEPS_LIVE.userCode; } catch (e) {}
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
-    + '<div style="font-size:2.4rem;margin-bottom:8px">✅</div>'
-    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Eko retailer code created</div>'
-    + '<div style="font-size:.8rem;color:var(--muted2)">Your code: <strong style="color:var(--text)">' + aepsEsc(AEPS_LIVE.userCode) + '</strong></div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);margin-top:8px;line-height:1.5">Next: the one-time AEPS activation (shop details, documents and photos).</div></div>'
-    + '<button onclick="aepsActivationOpen()" class="btn-primary">Continue to AEPS activation →</button>';
-}
-</script>
-<script id="network-users-web">
-async function mergeBackendNetworkUsers(){
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users');
-    var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._networkUsers || [];
-    var byPhone = {};
-    all.forEach(function(u){ var p = String(u.phone || u.mobile || '').replace(/\D/g, '').slice(-10); if (p) byPhone[p] = u; });
-    j.users.forEach(function(b){
-      var p = String(b.phone || '').replace(/\D/g, '').slice(-10);
-      if (!p) return;
-      var ex = byPhone[p];
-      if (ex) {
-        if (!ex.role && b.role) ex.role = b.role;
-        if (!ex.phone) ex.phone = p;
-        if (ex.kyc !== 'verified' && b.kycStatus === 'verified') ex.kyc = 'verified';
-        return;
-      }
-      var d = b.createdAt ? new Date(b.createdAt) : null;
-      all.push({
-        uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
-        wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '',
-        joined: d ? d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'New',
-        txns: [], rtaiScore: 80, commissionEarned: 0, internalId: b.internalId || '', ekoUserCode: b.ekoUserCode || ''
-      });
-    });
-    window._networkUsers = all;
-  } catch (e) { /* backend list is a bonus: keep whatever the website already loaded */ }
-}
-</script>
-<script id="assign-users-web">
-async function mergeBackendAssignUsers(){
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users');
-    var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._assignUsers || [];
-    var norm = function(p){ return String(p || '').replace(/\D/g, '').slice(-10); };
-    var byPhone = {};
-    all.forEach(function(u){ var p = norm(u.phone || u.mobile); if (p) byPhone[p] = u; });
-    j.users.forEach(function(b){
-      var p = norm(b.phone); if (!p) return;
-      if (!byPhone[p]) {
-        var nu = { uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
-          wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '', assignedTo: null };
-        all.push(nu); byPhone[p] = nu;
-      } else if (!byPhone[p].role && b.role) { byPhone[p].role = b.role; }
-    });
-    // parent links held in the backend win over older website values
-    j.users.forEach(function(b){
-      if (!b.linked) return;
-      var child = byPhone[norm(b.phone)]; if (!child) return;
-      var par = b.parentPhone ? byPhone[norm(b.parentPhone)] : null;
-      child.assignedTo = par ? par.uid : null;
-    });
-    window._assignUsers = all;
-  } catch (e) { /* keep whatever the website already loaded */ }
-}
-</script>
-<script id="assign-sd-web">
-function assignPick(uid){
-  var all = window._assignUsers || [];
-  var d = document.getElementById('assign-d-' + uid), s = document.getElementById('assign-s-' + uid), h = document.getElementById('assign-sel-' + uid);
-  if (!d || !s || !h) return;
-  if (d.value) {
-    var dist = all.filter(function(p){ return p.uid === d.value; })[0];
-    s.value = (dist && dist.assignedTo) ? dist.assignedTo : '';
-    s.disabled = true; h.value = d.value;
-  } else {
-    var was = s.disabled; s.disabled = false; if (was) s.value = ''; h.value = s.value;
-  }
-}
-
-function showAssignTab(type){
-  ['retailer','distributor'].forEach(function(t){
-    var btn = document.getElementById('at-' + t); if (!btn) return;
-    var isActive = t === type, col = t === 'retailer' ? 'var(--green)' : 'var(--cyan)';
-    btn.style.borderColor = isActive ? col : 'var(--border)';
-    btn.style.background = isActive ? (t === 'retailer' ? 'rgba(16,185,129,.1)' : 'rgba(6,182,212,.1)') : 'transparent';
-    btn.style.color = isActive ? col : 'var(--muted2)';
-  });
-  var all = window._assignUsers || [];
-  var isRet = type === 'retailer';
-  var targets = all.filter(function(u){ return u.role === type; });
-  var dists = all.filter(function(u){ return u.role === 'distributor'; });
-  var sds = all.filter(function(u){ return u.role === 'superdist'; });
-  var targetLabel = isRet ? 'Retailer' : 'Distributor';
-  var rc = getRC(type), prc = getRC(isRet ? 'distributor' : 'superdist'), src = getRC('superdist');
-  var cols = isRet ? '1fr 1fr 1fr 1fr auto' : '1fr 1fr 1fr auto';
-  function selStyle(on, col){ return 'width:100%;background:var(--bg3);border:1px solid ' + (on ? col : 'var(--border)') + ';border-radius:7px;padding:5px 8px;color:var(--text);font-size:.74rem;appearance:none'; }
-
-  var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto">'
-    + '<div style="min-width:' + (isRet ? '760px' : '560px') + '"><div style="background:var(--bg3);padding:10px 14px;display:grid;grid-template-columns:' + cols + ';gap:8px;font-size:.7rem;color:var(--muted2);font-weight:600;text-transform:uppercase">'
-    + '<span>' + targetLabel + ' Name</span><span>Contact</span>' + (isRet ? '<span>Distributor</span><span>Super Distributor</span>' : '<span>Super Distributor</span>') + '<span>Action</span></div>';
-
-  if (!targets.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--muted2)">No ' + targetLabel + 's registered yet</div>';
-  } else {
-    targets.forEach(function(u){
-      var cur = u.assignedTo ? all.filter(function(p){ return p.uid === u.assignedTo; })[0] : null;
-      html += '<div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center">'
-        + '<div style="display:flex;align-items:center;gap:8px;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + rc.color + '22;color:' + rc.color + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0">' + aepsEsc((u.name || 'U')[0].toUpperCase()) + '</div>'
-        + '<div style="min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + aepsEsc(u.name) + '</div>'
-        + (u.shopName ? '<div style="font-size:.68rem;color:var(--muted2)">🏪 ' + aepsEsc(u.shopName) + '</div>' : '') + '</div></div>'
-        + '<div style="font-size:.75rem;color:var(--muted2)">' + aepsEsc(u.phone || '') + (u.email ? '<br/>' + aepsEsc(String(u.email).split('@')[0]) + '...' : '') + '</div>';
-      if (isRet) {
-        var distSel = cur && cur.role === 'distributor' ? cur.uid : '';
-        var sdSel = cur && cur.role === 'superdist' ? cur.uid : (cur && cur.role === 'distributor' && cur.assignedTo ? cur.assignedTo : '');
-        html += '<div><select id="assign-d-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" style="' + selStyle(distSel, prc.color) + '"><option value="">-- No distributor --</option>'
-          + dists.map(function(p){ return '<option value="' + p.uid + '"' + (distSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select></div>'
-          + '<div><select id="assign-s-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + (distSel ? 'disabled' : '') + ' style="' + selStyle(sdSel, src.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (sdSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (distSel ? '<div style="font-size:.62rem;color:var(--muted2);margin-top:2px">via distributor</div>' : (sdSel ? '<div style="font-size:.62rem;color:' + src.color + ';margin-top:2px">direct to super distributor</div>' : '')) + '</div>'
-          + '<input type="hidden" id="assign-sel-' + u.uid + '" value="' + aepsEsc(u.assignedTo || '') + '"/>';
-      } else {
-        html += '<div><select id="assign-sel-' + u.uid + '" style="' + selStyle(cur, prc.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (u.assignedTo === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (cur ? '<div style="font-size:.65rem;color:' + prc.color + ';margin-top:2px">✓ ' + aepsEsc(cur.name) + '</div>' : '') + '</div>';
-      }
-      html += '<button onclick="doAssign(\'' + u.uid + '\',\'' + type + '\')" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;font-size:.72rem;cursor:pointer;font-weight:700;white-space:nowrap">Save ✓</button></div>';
-    });
-  }
-  html += '</div></div>';
-
-  var assigned = targets.filter(function(u){ return u.assignedTo; }).length, unassigned = targets.length - assigned;
-  function card(n, label, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:' + col + '">' + n + '</div><div style="font-size:.65rem;color:var(--muted2)">' + label + '</div></div>'; }
-  html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
-    + card(targets.length, 'Total ' + targetLabel + 's', rc.color) + card(assigned, 'Assigned', 'var(--green)') + card(unassigned, 'Unassigned', 'var(--gold)')
-    + (isRet ? card(dists.length, 'Distributors', prc.color) + card(sds.length, 'Super Distributors', src.color) : card(sds.length, 'Super Distributors', prc.color))
-    + '</div>' + html;
-  document.getElementById('assign-content').innerHTML = html;
-}
-</script>
-<script id="golive-clean-web">
-// ---------- shared: real ledger (admin) ----------
-var _GL = { rows: null, at: 0 };
-async function glLoadLedger(force){
-  if (!force && _GL.rows && Date.now() - _GL.at < 15000) return _GL.rows;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/ledger?limit=500');
-    var j = await r.json();
-    if (j && j.success && Array.isArray(j.transactions)) { _GL.rows = j.transactions; _GL.at = Date.now(); return _GL.rows; }
-  } catch (e) {}
-  return null;
-}
-function glMoney(n){ return '₹' + (Number(n) || 0).toLocaleString('en-IN'); }
-function glCard(label, val, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;color:' + col + '">' + val + '</div><div style="font-size:.68rem;color:var(--muted2);margin-top:3px">' + label + '</div></div>'; }
-
-// ---------- Fraud Engine: honest page, no invented alerts ----------
-renderFraudEngine = function(){
-  var el = document.getElementById('page-fraud'); if (!el) return;
-  var controls = [
-    ['🔐', 'Login required', 'Every AEPS, network and admin API call needs a valid login token'],
-    ['🚫', 'One wallet credit per Eko transaction', 'A withdrawal can never credit the wallet twice'],
-    ['❄️', 'Frozen accounts blocked', 'Frozen retailers cannot run AEPS'],
-    ['👆', 'Biometric + OTP', 'Aadhaar fingerprint on every AEPS call; customer SMS OTP above ₹5,000'],
-    ['⏳', 'Pending withdrawals', 'Held as pending until Eko confirms; no cash credit before confirmation']
-  ];
-  el.innerHTML = '<div class="page-title" style="color:var(--red)">🔍 Fraud Engine</div>'
-    + '<div class="page-sub">Controls enforced by the platform · real alerts only</div>'
-    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:10px">🚨 Fraud Alerts</div>'
-    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:26px;text-align:center;color:var(--muted2);margin-bottom:18px"><div style="font-size:2rem;margin-bottom:6px">✅</div><div style="font-size:.88rem">No fraud alerts recorded.</div><div style="font-size:.72rem;margin-top:4px">Alerts will appear here when the platform flags a real transaction.</div></div>'
-    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:10px">🛡️ Controls in force</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px">'
-    + controls.map(function(x){ return '<div style="background:var(--bg2);border:1px solid rgba(0,212,170,.2);border-radius:12px;padding:12px"><div style="font-size:1.3rem;margin-bottom:5px">' + x[0] + '</div><div style="font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:3px">' + x[1] + '</div><div style="font-size:.7rem;color:var(--muted2)">' + x[2] + '</div></div>'; }).join('')
-    + '</div>';
-};
-
-// ---------- Reconcile: REAL ledger ----------
-renderReconcile = async function(){
-  var el = document.getElementById('page-reconcile'); if (!el) return;
-  el.innerHTML = '<div class="page-title">📒 Reconcile</div><div class="page-sub">Real transaction ledger</div><div style="text-align:center;padding:30px;color:var(--muted2)">⏳ Loading ledger…</div>';
-  var rows = await glLoadLedger(true);
-  if (!rows) { el.innerHTML = '<div class="page-title">📒 Reconcile</div><div style="padding:24px;color:#ef4444">Could not load the ledger. Log in as admin and try again.</div>'; return; }
-  var by = {}, tot = { n: 0, ok: 0, pend: 0, fail: 0, att: 0 };
-  rows.forEach(function(t){
-    var k = t.mainService || 'other'; by[k] = by[k] || { n: 0, cr: 0, dr: 0, pend: 0, fail: 0 };
-    by[k].n++; tot.n++;
-    if (t.status === 'success') { tot.ok++; if (t.type === 'credit') by[k].cr += t.amount; else by[k].dr += t.amount; }
-    else if (t.status === 'pending') { by[k].pend++; tot.pend++; }
-    else { by[k].fail++; tot.fail++; }
-  });
-  var attention = rows.filter(function(t){ return t.status !== 'success'; });
-  function when(d){ try { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
-  var svcRows = Object.keys(by).map(function(k){ var b = by[k];
-    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-size:.8rem;font-weight:600">' + k.toUpperCase() + '</td><td style="padding:8px 10px;font-size:.78rem">' + b.n + '</td><td style="padding:8px 10px;font-size:.78rem;color:var(--green)">' + glMoney(b.cr) + '</td><td style="padding:8px 10px;font-size:.78rem;color:#ef4444">' + glMoney(b.dr) + '</td><td style="padding:8px 10px;font-size:.78rem;color:var(--gold)">' + b.pend + '</td><td style="padding:8px 10px;font-size:.78rem;color:#ef4444">' + b.fail + '</td></tr>'; }).join('');
-  var attRows = attention.slice(0, 100).map(function(t){
-    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc(when(t.createdAt)) + '</td><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc((t.mainService || '') + (t.subService ? ' / ' + t.subService : '')) + '</td><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc(t.userName || t.phone) + '</td><td style="padding:7px 10px;font-size:.74rem">' + glMoney(t.amount) + '</td><td style="padding:7px 10px;font-size:.74rem;color:' + (t.status === 'pending' ? 'var(--gold)' : '#ef4444') + '">' + aepsEsc(t.status) + '</td><td style="padding:7px 10px;font-size:.7rem;color:var(--muted2)">' + aepsEsc(t.reference) + '</td></tr>'; }).join('');
-  var th = function(s){ return '<th style="padding:8px 10px;text-align:left;font-size:.68rem;color:var(--muted2)">' + s + '</th>'; };
-  el.innerHTML = '<div class="page-title">📒 Reconcile</div><div class="page-sub">Real transaction ledger · latest ' + rows.length + ' entries</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px">'
-    + glCard('Entries', tot.n, 'var(--cyan)') + glCard('Successful', tot.ok, 'var(--green)') + glCard('Pending', tot.pend, 'var(--gold)') + glCard('Failed / other', tot.fail, '#ef4444') + '</div>'
-    + (rows.length ? '' : '<div style="text-align:center;padding:26px;color:var(--muted2)">No transactions yet.</div>')
-    + (rows.length ? '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;margin-bottom:8px">By service</div><div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:480px"><thead><tr style="background:var(--bg3)">' + th('SERVICE') + th('ENTRIES') + th('CREDITED') + th('DEBITED') + th('PENDING') + th('FAILED') + '</tr></thead><tbody>' + svcRows + '</tbody></table></div>' : '')
-    + '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;margin-bottom:8px">Needs attention (' + attention.length + ')</div>'
-    + (attention.length ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:520px"><thead><tr style="background:var(--bg3)">' + th('TIME') + th('SERVICE') + th('USER') + th('AMOUNT') + th('STATUS') + th('REFERENCE') + '</tr></thead><tbody>' + attRows + '</tbody></table></div>'
-      : '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;text-align:center;color:var(--muted2);font-size:.85rem">✅ Nothing pending or failed.</div>');
-};
-
-// ---------- Disputes: admin sees the REAL ledger; no money moves in the browser ----------
-var _origRenderDispute = renderDispute;
-renderDispute = async function(){
-  try {
-    if (CU && (CU.role === 'admin' || CU.role === 'whitelabel')) {
-      var rows = await glLoadLedger(false);
-      if (rows) window._allNetworkTxns = rows.map(function(t){
-        var d = t.createdAt ? new Date(t.createdAt) : null;
-        return { txnId: t.reference || (t.phone + '-' + (d ? d.getTime() : '')), title: (t.mainService || 'txn') + (t.subService ? ' / ' + t.subService : ''), service: t.mainService, amount: t.amount, type: t.type,
-          status: t.status, date: d ? d.toLocaleDateString('en-IN') : '', userName: t.userName || t.phone, userRole: t.userRole, phone: t.phone, disputeStatus: 'none' };
-      });
-    }
-  } catch (e) {}
-  _origRenderDispute();
-};
-
-// A reversal never credits a wallet from the browser (wallets live on the server). It records a request only.
-initiateReversal = function(txnId){
-  if (!confirm('Record a reversal request for ' + txnId + '?\nNo money moves until it is verified with the payment partner and credited from the server.')) return;
-  TXN_HISTORY.forEach(function(x){ if (x.txnId === txnId) { x.disputeStatus = 'reversal'; } });
-  if (db && CU && CU.uid) {
-    db.collection('bankme_disputes').add({ txnId: txnId, type: 'reversal', raisedBy: CU.uid, raisedByName: CU.name, raisedByRole: CU.role, date: nowStr(), status: 'open' }).catch(function(){});
-    db.collection('bankme_users').doc(CU.uid).update({ txns: TXN_HISTORY }).catch(function(){});
-  }
-  toast('Reversal request recorded for ' + txnId + ' — no wallet change', 's');
-  renderDispute();
-};
-
-// No simulated outcome: AEPS withdrawals are checked with Eko; other services have no live check yet.
-checkTxnStatus = async function(txnId){
-  var t = (TXN_HISTORY || []).filter(function(x){ return x.txnId === txnId; })[0];
-  if (!t || t.service !== 'aeps') { toast('Live status check is only available for AEPS withdrawals right now', 'i'); return; }
-  toast('Checking with Eko…', 'i');
-  try {
-    var r = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: txnId }) });
-    var j = await r.json();
-    if (!j || !j.success) { toast((j && j.error) || 'Could not check status', 'e'); return; }
-    if (j.state === 'success') { t.status = 'success'; toast('Confirmed by Eko' + (j.credited ? ' — wallet credited' : ''), 's'); }
-    else if (j.state === 'failed') { t.status = 'failed'; toast('Failed at the bank — nothing credited', 'e'); }
-    else toast('Still pending at the bank', 'i');
-    renderDispute();
-  } catch (e) { toast('Could not check status', 'e'); }
-};
-</script>
-<script id="pan-name-web">
-// "User 7191" style names are placeholders created at first login, never real names
-function bmNameOk(n){ n = String(n == null ? '' : n).trim(); return !!n && !/^user\s*\d{0,4}$/i.test(n); }
-function bmDisplayName(){
-  if (!CU) return '';
-  if (CU.panName) return aepsEsc(CU.panName);
-  if (bmNameOk(CU.name)) return aepsEsc(CU.name);
-  return '<span style="color:var(--gold);font-size:.9rem">Complete your KYC to add your name</span>';
-}
-async function bmLoadKyc(){
-  var phone = String((CU && (CU.phone || CU.mobile)) || '').replace(/\D/g, '').slice(-10);
-  if (CU && CU.panName && CU.panNumber) return { panName: CU.panName, panNumber: CU.panNumber, dob: CU.dob };
-  if (phone.length !== 10) return {};
-  try {
-    var r = await fetch(BACKEND_URL + '/user/' + phone + '/kyc-status'); var d = await r.json();
-    if (d && d.success) return { panName: bmNameOk(d.panName) ? d.panName : '', panNumber: d.panNumber || '', dob: d.dob || '' };
-  } catch (e) {}
-  return {};
-}
-</script>
-<script id="customer-upgrade-web">
-async function bmApplyRetailerUpgrade(d){
-  try {
-    if (CU) { CU.role = 'retailer'; if (d.internalId) CU.internalId = d.internalId; }
-    if (db && CU && CU.uid && String(CU.uid).indexOf('demo-') !== 0) {
-      await db.collection('bankme_users').doc(CU.uid).update({ role: 'retailer', ekoUserCode: String(d.userCode || '') }).catch(function(){});
-    }
-    var rc = getRC('retailer'), badge = document.getElementById('role-badge');
-    if (badge) { badge.textContent = rc.label; badge.style.background = rc.color + '20'; badge.style.color = rc.color; badge.style.border = '1px solid ' + rc.color + '40'; }
-    var nm = document.getElementById('nb-mynetwork'); if (nm) nm.style.display = '';
-    toast('Your account is now a Retailer account ✅', 's');
-  } catch (e) {}
-}
-</script>
-<script id="upgrade-admin-web">
-var _upgInfo = {};
-var _origMergeAssign = mergeBackendAssignUsers;
-mergeBackendAssignUsers = async function(){
-  await _origMergeAssign();
-  _upgInfo = {};
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users'); var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._assignUsers || [], norm = function(p){ return String(p || '').replace(/\D/g, '').slice(-10); };
-    j.users.forEach(function(b){
-      if (!b.upgradedFromCustomer) return;
-      var p = norm(b.phone); _upgInfo[p] = { at: b.upgradedAt, internalId: b.internalId, eko: b.ekoUserCode };
-      all.forEach(function(u){ if (norm(u.phone || u.mobile) === p) u.upgraded = true; });
-    });
-  } catch (e) {}
-};
-
-function assignPick(uid){
-  var all = window._assignUsers || [];
-  var d = document.getElementById('assign-d-' + uid), s = document.getElementById('assign-s-' + uid), a = document.getElementById('assign-a-' + uid), h = document.getElementById('assign-sel-' + uid);
-  if (!d || !s || !h) return;
-  if (d.value) {
-    var dist = all.filter(function(p){ return p.uid === d.value; })[0];
-    s.value = (dist && dist.assignedTo) ? dist.assignedTo : ''; s.disabled = true;
-    if (a) { a.value = ''; a.disabled = true; }
-    h.value = d.value;
-  } else {
-    var wasS = s.disabled; s.disabled = false; if (wasS) s.value = '';
-    if (s.value) { if (a) { a.value = ''; a.disabled = true; } h.value = s.value; }
-    else { if (a) a.disabled = false; h.value = a ? a.value : ''; }
-  }
-}
-
-function showAssignTab(type){
-  ['retailer','distributor'].forEach(function(t){
-    var btn = document.getElementById('at-' + t); if (!btn) return;
-    var isActive = t === type, col = t === 'retailer' ? 'var(--green)' : 'var(--cyan)';
-    btn.style.borderColor = isActive ? col : 'var(--border)';
-    btn.style.background = isActive ? (t === 'retailer' ? 'rgba(16,185,129,.1)' : 'rgba(6,182,212,.1)') : 'transparent';
-    btn.style.color = isActive ? col : 'var(--muted2)';
-  });
-  var all = window._assignUsers || [];
-  var isRet = type === 'retailer';
-  var targets = all.filter(function(u){ return u.role === type; });
-  var dists = all.filter(function(u){ return u.role === 'distributor'; });
-  var sds = all.filter(function(u){ return u.role === 'superdist'; });
-  var adm = all.filter(function(u){ return u.role === 'admin'; })[0] || null;
-  var targetLabel = isRet ? 'Retailer' : 'Distributor';
-  var rc = getRC(type), prc = getRC(isRet ? 'distributor' : 'superdist'), src = getRC('superdist');
-  var cols = isRet ? '1fr 1fr 1fr 1fr 1fr auto' : '1fr 1fr 1fr auto';
-  function selStyle(on, col){ return 'width:100%;background:var(--bg3);border:1px solid ' + (on ? col : 'var(--border)') + ';border-radius:7px;padding:5px 8px;color:var(--text);font-size:.74rem;appearance:none'; }
-  function dstr(x){ try { return x ? new Date(x).toLocaleDateString('en-IN') : '-'; } catch (e) { return '-'; } }
-  function parentName(u){ var p = u.assignedTo ? all.filter(function(q){ return q.uid === u.assignedTo; })[0] : null; return p ? (p.role === 'admin' ? 'Admin (direct)' : p.name + ' (' + (getRC(p.role).label || p.role) + ')') : 'Unassigned'; }
-
-  var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto">'
-    + '<div style="min-width:' + (isRet ? '900px' : '560px') + '"><div style="background:var(--bg3);padding:10px 14px;display:grid;grid-template-columns:' + cols + ';gap:8px;font-size:.7rem;color:var(--muted2);font-weight:600;text-transform:uppercase">'
-    + '<span>' + targetLabel + ' Name</span><span>Contact</span>' + (isRet ? '<span>Distributor</span><span>Super Distributor</span><span>Admin</span>' : '<span>Super Distributor</span>') + '<span>Action</span></div>';
-
-  if (!targets.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--muted2)">No ' + targetLabel + 's registered yet</div>';
-  } else {
-    targets.forEach(function(u){
-      var cur = u.assignedTo ? all.filter(function(p){ return p.uid === u.assignedTo; })[0] : null;
-      var up = isRet && u.upgraded;
-      html += '<div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center">'
-        + '<div style="display:flex;align-items:center;gap:8px;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + rc.color + '22;color:' + rc.color + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0">' + aepsEsc((u.name || 'U')[0].toUpperCase()) + '</div>'
-        + '<div style="min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + aepsEsc(u.name) + '</div>'
-        + (up ? '<span style="font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:100px;background:rgba(245,158,11,.15);color:var(--gold);border:1px solid rgba(245,158,11,.4)">⬆ UPGRADED</span>' : '')
-        + (u.shopName ? '<div style="font-size:.68rem;color:var(--muted2)">🏪 ' + aepsEsc(u.shopName) + '</div>' : '') + '</div></div>'
-        + '<div style="font-size:.75rem;color:var(--muted2)">' + aepsEsc(u.phone || '') + (u.email ? '<br/>' + aepsEsc(String(u.email).split('@')[0]) + '...' : '') + '</div>';
-      if (isRet) {
-        var distSel = cur && cur.role === 'distributor' ? cur.uid : '';
-        var sdSel = cur && cur.role === 'superdist' ? cur.uid : (cur && cur.role === 'distributor' && cur.assignedTo ? cur.assignedTo : '');
-        var admSel = cur && cur.role === 'admin' ? cur.uid : '';
-        html += '<div><select id="assign-d-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" style="' + selStyle(distSel, prc.color) + '"><option value="">-- No distributor --</option>'
-          + dists.map(function(p){ return '<option value="' + p.uid + '"' + (distSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select></div>'
-          + '<div><select id="assign-s-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + (distSel ? 'disabled' : '') + ' style="' + selStyle(sdSel, src.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (sdSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (distSel ? '<div style="font-size:.62rem;color:var(--muted2);margin-top:2px">via distributor</div>' : (sdSel ? '<div style="font-size:.62rem;color:' + src.color + ';margin-top:2px">direct to super distributor</div>' : '')) + '</div>'
-          + '<div>' + (adm
-              ? '<select id="assign-a-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + ((distSel || sdSel) ? 'disabled' : '') + ' style="' + selStyle(admSel, 'var(--gold)') + '"><option value="">-- None --</option><option value="' + adm.uid + '"' + (admSel ? ' selected' : '') + '>Direct to Admin</option></select>'
-                + (admSel ? '<div style="font-size:.62rem;color:var(--gold);margin-top:2px">commission to admin</div>' : '')
-              : '<div style="font-size:.65rem;color:var(--muted2)">Admin account not found</div>') + '</div>'
-          + '<input type="hidden" id="assign-sel-' + u.uid + '" value="' + aepsEsc(u.assignedTo || '') + '"/>';
-      } else {
-        html += '<div><select id="assign-sel-' + u.uid + '" style="' + selStyle(cur, prc.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (u.assignedTo === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (cur ? '<div style="font-size:.65rem;color:' + prc.color + ';margin-top:2px">✓ ' + aepsEsc(cur.name) + '</div>' : '') + '</div>';
-      }
-      html += '<button onclick="doAssign(\'' + u.uid + '\',\'' + type + '\')" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;font-size:.72rem;cursor:pointer;font-weight:700;white-space:nowrap">Save ✓</button></div>';
-    });
-  }
-  html += '</div></div>';
-
-  var assigned = targets.filter(function(u){ return u.assignedTo; }).length, unassigned = targets.length - assigned;
-  var direct = isRet ? targets.filter(function(u){ var p = u.assignedTo ? all.filter(function(q){ return q.uid === u.assignedTo; })[0] : null; return p && p.role === 'admin'; }).length : 0;
-  var upgraded = isRet ? targets.filter(function(u){ return u.upgraded; }) : [];
-  function card(n, label, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:' + col + '">' + n + '</div><div style="font-size:.65rem;color:var(--muted2)">' + label + '</div></div>'; }
-
-  var upBox = '';
-  if (isRet) {
-    upBox = '<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;margin-bottom:14px">'
-      + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;color:var(--gold);margin-bottom:' + (upgraded.length ? '8px' : '2px') + '">⬆ Upgraded customers (' + upgraded.length + ')</div>'
-      + (upgraded.length
-          ? upgraded.map(function(u){
-              var i = _upgInfo[String(u.phone || '').replace(/\D/g, '').slice(-10)] || {};
-              return '<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr 1.2fr;gap:8px;font-size:.74rem;padding:6px 0;border-top:1px solid var(--border);color:var(--text)">'
-                + '<span style="font-weight:600">' + aepsEsc(u.name) + '</span><span>' + aepsEsc(u.phone || '') + '</span><span>' + dstr(i.at) + '</span>'
-                + '<span style="color:var(--muted2)">' + aepsEsc(i.internalId || '') + (i.eko ? ' · Eko ' + aepsEsc(i.eko) : '') + '</span>'
-                + '<span style="color:var(--gold)">' + aepsEsc(parentName(u)) + '</span></div>';
-            }).join('')
-          : '<div style="font-size:.74rem;color:var(--muted2)">No customer has upgraded to retailer yet. Upgraded customers appear here and are assigned directly to the admin.</div>')
-      + '</div>';
-  }
-  html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
-    + card(targets.length, 'Total ' + targetLabel + 's', rc.color) + card(assigned, 'Assigned', 'var(--green)') + card(unassigned, 'Unassigned', 'var(--gold)')
-    + (isRet ? card(direct, 'Direct to Admin', 'var(--gold)') + card(upgraded.length, 'Upgraded', 'var(--gold)') + card(dists.length, 'Distributors', prc.color) + card(sds.length, 'Super Distributors', src.color) : card(sds.length, 'Super Distributors', prc.color))
-    + '</div>' + upBox + html;
-  document.getElementById('assign-content').innerHTML = html;
-}
 </script>
 </body>
 </html>

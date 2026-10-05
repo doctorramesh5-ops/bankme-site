@@ -1,0 +1,122 @@
+import { BACKEND_URL } from '../config';
+
+async function apiGet(path: string) {
+  const res = await fetch(`${BACKEND_URL}${path}`);
+  return res.json();
+}
+
+async function apiPost(path: string, body: any) {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+// ── DMT ──────────────────────────────────────────
+export function dmtGetSender(customerId: string, agentPhone: string) {
+  return apiGet(`/eko/dmt/sender/${customerId}?agent_phone=${agentPhone}`);
+}
+export function dmtOnboardSender(customerId: string, payload: {
+  name: string; dob: string; line: string; city: string;
+  state: string; pincode: string; district: string; area: string;
+}) {
+  return apiPost(`/eko/dmt/onboard-sender/${customerId}`, payload);
+}
+export function dmtGetRecipients(customerId: string) {
+  return apiGet(`/eko/dmt/recipients/${customerId}`);
+}
+export function dmtAddRecipient(customerId: string, payload: {
+  recipient_mobile: string; recipient_name: string; ifsc: string; account: string;
+  bank?: string; agent_phone?: string;
+}) {
+  return apiPost(`/eko/dmt/add-recipient/${customerId}`, payload);
+}
+export function dmtSearchBeneficiaries(query: string, agentPhone: string) {
+  return apiGet(`/eko/dmt/beneficiary-search?q=${encodeURIComponent(query)}&agent_phone=${agentPhone}`);
+}
+export function dmtSendOtp(payload: {
+  recipient_id: number; amount: number; customer_id: string;
+}) {
+  return apiPost(`/eko/dmt/send-otp`, payload);
+}
+export function dmtInitiateTransfer(payload: {
+  recipient_id: number; amount: number; customer_id: string;
+  otp: string; otp_ref_id: string; channel: string; state: string;
+}) {
+  return apiPost(`/eko/dmt/initiate-transfer`, payload);
+}
+
+// ── AEPS ─────────────────────────────────────────
+export function aepsBalanceEnquiry(customerId: string, payload: {
+  user_code: string; bank_code: string; aadhar: string; latlong: string; piddata: string;
+}) {
+  return apiPost(`/eko/aeps/balance-enquiry/${customerId}`, payload);
+}
+export function aepsMiniStatement(customerId: string, payload: {
+  user_code: string; bank_code: string; aadhar: string; latlong: string; piddata: string;
+}) {
+  return apiPost(`/eko/aeps/mini-statement/${customerId}`, payload);
+}
+export function aepsCashWithdrawalOtp(customerId: string, payload: {
+  user_code: string; bank_code: string; aadhar: string; latlong: string; amount: number;
+}) {
+  return apiPost(`/eko/aeps/cash-withdrawal-otp/${customerId}`, payload);
+}
+export function aepsCashWithdrawal(customerId: string, payload: {
+  user_code: string; bank_code: string; aadhar: string; latlong: string; piddata: string;
+  amount: number; txn_otp_request_id?: string; otp?: string;
+}) {
+  return apiPost(`/eko/aeps/cash-withdrawal/${customerId}`, payload);
+}
+
+// ── BBPS ─────────────────────────────────────────
+export function bbpsGetCategories() {
+  return apiGet(`/eko/bbps/categories`);
+}
+export function bbpsGetOperators(categoryId?: number) {
+  return apiGet(`/eko/bbps/operators${categoryId ? `?category=${categoryId}` : ''}`);
+}
+export function bbpsFetchBill(params: {
+  phone_operator_code: string; utility_acc_no: string; confirmation_mobile_no: string;
+  sender_name: string; category: number;
+}) {
+  const qs = new URLSearchParams(params as any).toString();
+  return apiGet(`/eko/bbps/fetch-bill?${qs}`);
+}
+export function bbpsPayBill(payload: {
+  phone_operator_code: string; utility_acc_no: string; confirmation_mobile_no: string;
+  sender_name: string; category: number; amount: number;
+}) {
+  return apiPost(`/eko/bbps/pay-bill`, payload);
+}
+
+// ── Identity / Bank Accounts (BankMe internal ID + Eko usercode) ──
+export function userIdentity(phone: string) {
+  return apiGet(`/user/${phone}/identity`);
+}
+export function userBankAccounts(phone: string) {
+  return apiGet(`/user/${phone}/bank-accounts`);
+}
+
+// ── AEPS Fingpay Activation (one-time, per retailer) ───────────────
+export function aepsShopTypes() {
+  return apiGet(`/eko/aeps-shop-types`);
+}
+export function aepsStatesList() {
+  return apiGet(`/eko/aeps-states`);
+}
+
+async function apiPutForm(path: string, form: FormData) {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: 'PUT',
+    body: form,
+    // Do NOT set Content-Type — fetch sets the multipart boundary itself.
+  });
+  return res.json();
+}
+
+export function aepsActivateFingpay(userCode: string, form: FormData) {
+  return apiPutForm(`/eko/agent/${userCode}/aeps-fingpay/activate`, form);
+}

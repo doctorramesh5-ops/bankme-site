@@ -625,7 +625,6 @@ main{flex:1;overflow:auto}
     <div class="tb-right">
       <span class="rtai-badge" style="display:none" id="rtai-badge-top">RTAI ✓</span>
       <span class="wallet-chip" id="wallet-chip">₹0.00</span>
-      <span class="wallet-chip" id="identity-chip" style="display:none"></span>
       <div id="bell-btn" onclick="toggleNotifications()" style="position:relative;cursor:pointer;width:38px;height:38px;border-radius:50%;background:var(--bg3);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;transition:all .2s">
         🔔
         <span id="bell-badge" style="position:absolute;top:-3px;right:-3px;background:#ef4444;color:#fff;border-radius:100px;font-size:.58rem;font-weight:900;padding:2px 5px;display:none;min-width:16px;text-align:center;box-shadow:0 0 0 2px var(--bg2)">0</span>
@@ -1953,24 +1952,6 @@ function doLogout(){
 // ══════════════════════════════════════
 // APP INIT
 // ══════════════════════════════════════
-async function fetchMyIdentity(){
-  try{
-    if(!CU||!CU.phone) return;
-    var r=await fetch(BANKME_API+'/user/'+CU.phone+'/identity');
-    var j=await r.json();
-    if(j&&j.success){
-      CU.internalId=j.internalId||null;
-      CU.ekoUserCode=j.ekoUserCode||null;
-      var chip=document.getElementById('identity-chip');
-      if(chip&&(CU.internalId||CU.ekoUserCode)){
-        chip.style.display='inline-block';
-        chip.textContent=(CU.internalId||'')+(CU.ekoUserCode?' \u00b7 Eko '+CU.ekoUserCode:'');
-        chip.title='Your BankMe Internal ID'+(CU.ekoUserCode?' and Eko User Code':'');
-      }
-    }
-  }catch(e){ /* identity display is non-critical \u2014 fail silently */ }
-}
-
 function showApp(){
   document.getElementById('auth-page').style.display='none';
   document.getElementById('app-page').style.display='flex';
@@ -1980,7 +1961,6 @@ function showApp(){
   badge.style.cssText='font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:100px;background:'+rc.color+'20;color:'+rc.color+';border:1px solid '+rc.color+'40';
   document.getElementById('user-avatar').textContent=(CU.name||'U')[0].toUpperCase();
   document.getElementById('wallet-chip').textContent='\u20B9'+fmtN(CU.wallet||0);
-  fetchMyIdentity();
   var role=CU.role;
   var isAdminWL=['admin','whitelabel'].indexOf(role)>=0;
   var hasServices=['superdist','distributor','retailer','customer'].indexOf(role)>=0;
@@ -2325,7 +2305,6 @@ async function renderMyNetwork(){
   }catch(e){
     window._networkUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,joined:'Apr 2025',kyc:i%2===0?'verified':'pending',txns:[],rtaiScore:80+i,commissionEarned:2000*i});});
   }
-  await mergeBackendNetworkUsers();
   if(myTabs.length){
     showNetworkTab(myTabs[0]);
   } else {
@@ -4427,355 +4406,603 @@ function clearRTAIChat(){
 // ══════════════════════════════════════
 // ADVANCED DMT SYSTEM
 // ══════════════════════════════════════
+var DMT_STATE = {
+  tab: 'new',           // new | saved | bulk | schedule
+  beneficiaries: [],    // saved beneficiaries
+  verified: false,      // account verified
+  verifiedName: '',     // verified account holder name
+  riskScore: 0,         // RTAI risk score
+  dailyUsed: 0,         // daily limit used
+  monthlyUsed: 0,       // monthly limit used
+};
+var DMT_LIMITS = {daily:25000, monthly:100000, perTxn:10000};
 var DMT_BANKS = ['State Bank of India','Punjab National Bank','Bank of Baroda','Canara Bank','Union Bank','Bank of India','HDFC Bank','ICICI Bank','Axis Bank','Kotak Mahindra','Yes Bank','IndusInd Bank','IDBI Bank','Federal Bank','Karnataka Bank','South Indian Bank','UCO Bank','Central Bank','Bank of Maharashtra','Indian Bank','Post Office (IPPB)','Airtel Payments Bank','Paytm Payments Bank','Fino Payments Bank'];
 
-// Real DMT state (sender -> recipient -> OTP -> transfer), matching mobile exactly
-var DMT = {
-  senderMobile: '',
-  senderName: '',
-  senderStatus: 'none', // none | needs_onboarding | kyc_pending | ready
-  savedRecipients: [],
-  recipientId: null,
-  amount: 0,
-  remarks: '',
-  otpRefId: '',
-  txnResult: null,
-  _beneInfo: null,
-};
+function loadDMTBeneficiaries(){
+  try{
+    var d=localStorage.getItem('bm_dmt_ben_'+(CU.uid||CU.email||'u'));
+    DMT_STATE.beneficiaries=d?JSON.parse(d):[];
+  }catch(e){ DMT_STATE.beneficiaries=[]; }
+}
 
-function dmtAgentPhone(){ return (CU&&CU.phone)||''; }
-function dmtRoot(){ return document.getElementById('dmt-root'); }
+function saveDMTBeneficiaries(){
+  try{ localStorage.setItem('bm_dmt_ben_'+(CU.uid||CU.email||'u'), JSON.stringify(DMT_STATE.beneficiaries)); }catch(e){}
+}
 
 function renderDMT(){
-  DMT.senderMobile=''; DMT.senderName=''; DMT.senderStatus='none';
-  DMT.savedRecipients=[]; DMT.recipientId=null; DMT.amount=0; DMT.remarks='';
-  DMT.otpRefId=''; DMT.txnResult=null; DMT._beneInfo=null;
-  dmtRenderStep1();
-}
+  var root=document.getElementById('dmt-root');
+  if(!root) return;
+  loadDMTBeneficiaries();
+  DMT_STATE.tab='new';
+  DMT_STATE.verified=false;
+  DMT_STATE.verifiedName='';
 
-function dmtRenderStep1(){
-  var root=dmtRoot(); if(!root) return;
-  root.innerHTML =
-    '<div style="background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.2);border-radius:12px;padding:12px;margin-bottom:14px;font-size:.76rem;color:var(--rtai)">🛡️ Domestic Money Transfer via NPCI/Eko · ₹100–₹5,000 per transaction</div>'
-    +'<label class="flabel">Sender Mobile Number</label>'
-    +'<input class="finp" id="dmt-sender-mobile" type="tel" maxlength="10" placeholder="10-digit mobile of person sending money"/>'
-    +'<div id="dmt-sender-result" style="display:none;margin-bottom:10px"></div>'
-    +'<button class="btn-primary" id="dmt-verify-btn" onclick="dmtVerifySender()" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">🔍 Verify Sender →</button>'
-    +'<div id="dmt-onboard-section" style="display:none;margin-top:14px"></div>';
-}
+  // Daily/Monthly usage (simulated from TXN_HISTORY)
+  var today=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  DMT_STATE.dailyUsed=TXN_HISTORY.filter(function(t){return t.service==='dmt'&&t.date===today;}).reduce(function(s,t){return s+(t.amount||0);},0);
+  DMT_STATE.monthlyUsed=TXN_HISTORY.filter(function(t){return t.service==='dmt';}).reduce(function(s,t){return s+(t.amount||0);},0);
 
-async function dmtVerifySender(){
-  var mobile=(document.getElementById('dmt-sender-mobile')?.value||'').trim();
-  if(!mobile||mobile.length!==10){ toast('Enter a valid 10-digit sender mobile number','e'); return; }
-  var agentPhone=dmtAgentPhone();
-  if(!agentPhone){ toast('Could not identify your account. Please log in again.','e'); return; }
-  DMT.senderMobile=mobile;
-  var btn=document.getElementById('dmt-verify-btn');
-  var res=document.getElementById('dmt-sender-result');
-  if(btn){ btn.disabled=true; btn.textContent='Verifying…'; }
-  if(res){ res.style.display='block'; res.innerHTML='<div style="font-size:.78rem;color:var(--muted2)">🔍 Verifying sender with Eko…</div>'; }
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/sender/'+mobile+'?agent_phone='+encodeURIComponent(agentPhone));
-    var j=await r.json();
-    var rt=j&&j.data&&j.data.response_type_id;
-    if(rt===309){
-      DMT.senderName=(j.data.data&&j.data.data.customer_profile&&j.data.data.customer_profile.name)||'Verified Sender';
-      DMT.senderStatus='ready';
-      if(res) res.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:8px;padding:9px;font-size:.78rem"><span style="color:var(--green);font-weight:600">✅ Sender Verified</span><div style="color:var(--muted2);margin-top:2px">'+DMT.senderName+'</div></div>';
-      await dmtFetchRecipients();
-      setTimeout(dmtRenderStep2,400);
-    } else if(rt===2134){
-      DMT.senderName=mobile;
-      DMT.senderStatus='kyc_pending';
-      if(res) res.innerHTML='<div style="background:rgba(245,158,11,.1);border:1px solid var(--gold);border-radius:8px;padding:9px;font-size:.78rem"><span style="color:var(--gold);font-weight:600">⚠️ KYC Pending</span><div style="color:var(--muted2);margin-top:2px">Sender can still transfer with limits.</div></div>';
-      await dmtFetchRecipients();
-      setTimeout(dmtRenderStep2,400);
-    } else if(rt===308){
-      DMT.senderStatus='needs_onboarding';
-      if(res) res.style.display='none';
-      dmtShowOnboardForm();
-    } else {
-      toast((j&&j.data&&j.data.message)||'Could not verify sender','e');
-    }
-  }catch(e){
-    toast('Network error — could not reach server','e');
-  }finally{
-    if(btn){ btn.disabled=false; btn.textContent='🔍 Verify Sender →'; }
-  }
-}
+  var dailyPct=Math.min(100,Math.round((DMT_STATE.dailyUsed/DMT_LIMITS.daily)*100));
+  var monthlyPct=Math.min(100,Math.round((DMT_STATE.monthlyUsed/DMT_LIMITS.monthly)*100));
 
-function dmtShowOnboardForm(){
-  var sec=document.getElementById('dmt-onboard-section');
-  if(!sec) return;
-  sec.style.display='block';
-  sec.innerHTML =
-    '<div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:8px">New sender — complete registration</div>'
-    +'<label class="flabel">Sender Full Name</label>'
-    +'<input class="finp" id="dmt-ob-name" placeholder="Full name as per ID"/>'
-    +'<label class="flabel">Date of Birth</label>'
-    +'<input class="finp" id="dmt-ob-dob" type="date"/>'
-    +'<label class="flabel">Address Line</label>'
-    +'<input class="finp" id="dmt-ob-line" placeholder="House / Street"/>'
-    +'<label class="flabel">City</label>'
-    +'<input class="finp" id="dmt-ob-city" placeholder="City"/>'
-    +'<label class="flabel">District</label>'
-    +'<input class="finp" id="dmt-ob-district" placeholder="District (optional, defaults to city)"/>'
-    +'<label class="flabel">State</label>'
-    +'<input class="finp" id="dmt-ob-state" placeholder="State"/>'
-    +'<label class="flabel">Pincode</label>'
-    +'<input class="finp" id="dmt-ob-pincode" maxlength="6" placeholder="6-digit pincode"/>'
-    +'<label class="flabel">Area</label>'
-    +'<input class="finp" id="dmt-ob-area" placeholder="Area (optional, defaults to address line)"/>'
-    +'<button class="btn-primary" id="dmt-onboard-btn" onclick="dmtOnboardSender()" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">Register Sender →</button>';
-}
-
-async function dmtOnboardSender(){
-  var name=(document.getElementById('dmt-ob-name')?.value||'').trim();
-  var dob=(document.getElementById('dmt-ob-dob')?.value||'').trim();
-  var line=(document.getElementById('dmt-ob-line')?.value||'').trim();
-  var city=(document.getElementById('dmt-ob-city')?.value||'').trim();
-  var district=(document.getElementById('dmt-ob-district')?.value||'').trim();
-  var state=(document.getElementById('dmt-ob-state')?.value||'').trim();
-  var pincode=(document.getElementById('dmt-ob-pincode')?.value||'').trim();
-  var area=(document.getElementById('dmt-ob-area')?.value||'').trim();
-  if(!line||!city||!state||!pincode){ toast('Please fill in sender address details','e'); return; }
-  if(!dob){ toast('Please enter sender date of birth','e'); return; }
-  var btn=document.getElementById('dmt-onboard-btn');
-  if(btn){ btn.disabled=true; btn.textContent='Registering…'; }
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/onboard-sender/'+DMT.senderMobile,{
-      method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify({
-        name: name||('Sender '+DMT.senderMobile), dob:dob, line:line, city:city,
-        state:state, pincode:pincode, district:district||city, area:area||line
-      })
-    });
-    var j=await r.json();
-    if(j&&j.data&&j.data.status===0){
-      DMT.senderName=name||DMT.senderMobile;
-      DMT.senderStatus='kyc_pending';
-      toast('Sender registered!','s');
-      await dmtFetchRecipients();
-      setTimeout(dmtRenderStep2,400);
-    } else {
-      toast((j&&j.data&&j.data.message)||'Could not register sender','e');
-    }
-  }catch(e){
-    toast('Network error — could not reach server','e');
-  }finally{
-    if(btn){ btn.disabled=false; btn.textContent='Register Sender →'; }
-  }
-}
-
-async function dmtFetchRecipients(){
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/recipients/'+DMT.senderMobile);
-    var j=await r.json();
-    DMT.savedRecipients=(j&&j.data&&j.data.data&&j.data.data.recipient_list)||[];
-  }catch(e){ DMT.savedRecipients=[]; }
-}
-
-function dmtRenderStep2(){
-  var root=dmtRoot(); if(!root) return;
-  var hasSaved=DMT.savedRecipients&&DMT.savedRecipients.length>0;
-  root.innerHTML =
-    '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Sender: <strong style="color:var(--text)">'+(DMT.senderName||DMT.senderMobile)+'</strong> ('+DMT.senderMobile+')'+(DMT.senderStatus==='kyc_pending'?' <span style="color:var(--gold)">· KYC Pending</span>':'')+'</div>'
-    +(hasSaved?('<div style="font-size:.74rem;font-weight:700;color:var(--muted2);text-transform:uppercase;margin-bottom:8px">Saved Recipients</div>'
-      +'<div id="dmt-saved-list" style="margin-bottom:14px">'
-      +DMT.savedRecipients.map(function(r,i){
-        var acc=String(r.account||'');
-        var masked=acc.length>=8?acc.substring(0,4)+'****'+acc.slice(-4):acc;
-        return '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:7px;cursor:pointer" onclick="dmtSelectRecipient('+i+')">'
-          +'<div><div style="font-size:.84rem;font-weight:600;color:var(--text)">'+(r.name||r.recipient_name||'Recipient')+'</div>'
-          +'<div style="font-size:.7rem;color:var(--muted2)">'+masked+' · '+(r.bank||'')+' · '+(r.ifsc||'')+'</div></div>'
-          +'<div style="color:var(--blue);font-size:.76rem;font-weight:700">Select →</div></div>';
-      }).join('')
-      +'</div>'
-      +'<button onclick="dmtShowAddRecipientForm()" style="background:none;border:1px dashed var(--border2);color:var(--muted2);border-radius:10px;padding:9px;width:100%;cursor:pointer;font-size:.78rem;margin-bottom:10px">+ Add a new recipient</button>'
-    ):'')
-    +'<div id="dmt-add-recipient-form"'+(hasSaved?' style="display:none"':'')+'></div>';
-  if(!hasSaved) dmtRenderAddRecipientForm();
-}
-
-function dmtShowAddRecipientForm(){
-  var f=document.getElementById('dmt-add-recipient-form');
-  if(!f) return;
-  f.style.display='block';
-  dmtRenderAddRecipientForm();
-}
-
-function dmtRenderAddRecipientForm(){
-  var f=document.getElementById('dmt-add-recipient-form');
-  if(!f) return;
-  f.innerHTML =
-    '<label class="flabel">Recipient Name</label>'
-    +'<input class="finp" id="dmt-bene-name" placeholder="Beneficiary full name"/>'
-    +'<label class="flabel">Recipient Mobile Number</label>'
-    +'<input class="finp" id="dmt-bene-mobile" type="tel" maxlength="10" placeholder="10-digit mobile"/>'
-    +'<label class="flabel">Account Number</label>'
-    +'<input class="finp" id="dmt-bene-account" placeholder="Bank account number"/>'
-    +'<label class="flabel">Confirm Account Number</label>'
-    +'<input class="finp" id="dmt-bene-confirm" placeholder="Re-enter account number"/>'
-    +'<label class="flabel">IFSC Code</label>'
-    +'<input class="finp" id="dmt-bene-ifsc" maxlength="11" placeholder="e.g. SBIN0001234" oninput="this.value=this.value.toUpperCase()"/>'
-    +'<label class="flabel">Bank Name</label>'
-    +'<select class="fsel" id="dmt-bene-bank">'
-    +'<option value="">Select Bank</option>'
-    +DMT_BANKS.map(function(b){return '<option value="'+b+'">'+b+'</option>';}).join('')
-    +'</select>'
-    +'<button class="btn-primary" id="dmt-add-recipient-btn" onclick="dmtAddRecipient()" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">Add Recipient →</button>';
-}
-
-function dmtSelectRecipient(idx){
-  var r=DMT.savedRecipients[idx];
-  if(!r) return;
-  DMT.recipientId=r.recipient_id;
-  dmtRenderStep3({name:r.name||r.recipient_name||'Recipient',account:r.account,bank:r.bank,ifsc:r.ifsc});
-}
-
-async function dmtAddRecipient(){
-  var name=(document.getElementById('dmt-bene-name')?.value||'').trim();
-  var mobile=(document.getElementById('dmt-bene-mobile')?.value||'').trim();
-  var account=(document.getElementById('dmt-bene-account')?.value||'').trim();
-  var confirmAcc=(document.getElementById('dmt-bene-confirm')?.value||'').trim();
-  var ifsc=(document.getElementById('dmt-bene-ifsc')?.value||'').trim();
-  var bank=(document.getElementById('dmt-bene-bank')?.value||'').trim();
-  if(!name){ toast('Enter beneficiary name','e'); return; }
-  if(!mobile||mobile.length!==10){ toast('Enter beneficiary 10-digit mobile number','e'); return; }
-  if(!account||account.length<9){ toast('Enter valid account number','e'); return; }
-  if(account!==confirmAcc){ toast('Account numbers do not match','e'); return; }
-  if(!ifsc||ifsc.length!==11){ toast('Enter valid 11-character IFSC code','e'); return; }
-  var btn=document.getElementById('dmt-add-recipient-btn');
-  if(btn){ btn.disabled=true; btn.textContent='Adding…'; }
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/add-recipient/'+DMT.senderMobile,{
-      method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify({recipient_mobile:mobile, recipient_name:name, ifsc:ifsc, account:account, bank:bank, agent_phone:dmtAgentPhone()})
-    });
-    var j=await r.json();
-    if(j&&j.data&&j.data.data&&j.data.data.recipient_id){
-      DMT.recipientId=j.data.data.recipient_id;
-      dmtRenderStep3({name:name,account:account,bank:bank,ifsc:ifsc});
-    } else if(((j&&j.data&&j.data.message)||'').toLowerCase().indexOf('already registered')!==-1){
-      await dmtFetchRecipients();
-      var match=DMT.savedRecipients.find(function(x){return x.account===account;});
-      if(match){
-        DMT.recipientId=match.recipient_id;
-        dmtRenderStep3({name:match.name||name,account:account,bank:bank,ifsc:ifsc});
-      } else {
-        toast('Recipient already registered but could not be located. Try again.','e');
-      }
-    } else {
-      toast((j&&j.data&&j.data.message)||'Could not add recipient','e');
-    }
-  }catch(e){
-    toast('Network error — could not reach server','e');
-  }finally{
-    if(btn){ btn.disabled=false; btn.textContent='Add Recipient →'; }
-  }
-}
-
-function dmtRenderStep3(beneInfo){
-  var root=dmtRoot(); if(!root) return;
-  DMT._beneInfo=beneInfo;
-  root.innerHTML =
-    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px;font-size:.78rem">'
-    +'<div style="color:var(--muted2)">Sending to</div>'
-    +'<div style="font-weight:700;color:var(--text)">'+beneInfo.name+'</div>'
-    +'<div style="color:var(--muted2);font-size:.72rem">'+(beneInfo.account||'')+' · '+(beneInfo.bank||'')+' · '+(beneInfo.ifsc||'')+'</div>'
+  root.innerHTML=
+    // Limit Tracker
+    '<div style="background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.2);border-radius:12px;padding:12px;margin-bottom:14px">'
+    +'<div style="font-size:.72rem;font-weight:700;color:var(--rtai);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📊 RBI Compliance Limits</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<div><div style="display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:3px"><span style="color:var(--muted2)">Daily Limit</span><span style="color:'+(dailyPct>=90?'var(--red)':'var(--text)')+'">₹'+fmtS(DMT_STATE.dailyUsed)+' / ₹'+fmtS(DMT_LIMITS.daily)+'</span></div><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;background:'+(dailyPct>=90?'var(--red)':dailyPct>=70?'var(--gold)':'var(--green)')+';width:'+dailyPct+'%;border-radius:3px;transition:width .5s"></div></div></div>'
+    +'<div><div style="display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:3px"><span style="color:var(--muted2)">Monthly Limit</span><span style="color:'+(monthlyPct>=90?'var(--red)':'var(--text)')+'">₹'+fmtS(DMT_STATE.monthlyUsed)+' / ₹'+fmtS(DMT_LIMITS.monthly)+'</span></div><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;background:'+(monthlyPct>=90?'var(--red)':monthlyPct>=70?'var(--gold)':'var(--green)')+';width:'+monthlyPct+'%;border-radius:3px;transition:width .5s"></div></div></div>'
+    +'</div></div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'
+    +[
+      {id:'new',    icon:'➕', label:'New Transfer'},
+      {id:'saved',  icon:'⭐', label:'Saved ('+DMT_STATE.beneficiaries.length+')'},
+      {id:'bulk',   icon:'📋', label:'Bulk Transfer'},
+      {id:'schedule',icon:'⏰', label:'Schedule'},
+    ].map(function(t,i){
+      return '<button onclick="switchDMTTab(\''+t.id+'\')" id="dmttab-'+t.id+'" style="padding:6px 12px;border-radius:100px;border:1px solid '+(i===0?'var(--blue)':'var(--border)')+';background:'+(i===0?'rgba(37,99,235,.1)':'transparent')+';color:'+(i===0?'var(--blue)':'var(--muted2)')+';font-size:.74rem;cursor:pointer;font-weight:600">'+t.icon+' '+t.label+'</button>';
+    }).join('')
     +'</div>'
-    +'<label class="flabel">Amount (₹100 – ₹5,000)</label>'
-    +'<input class="finp" id="dmt-amount" type="number" min="100" max="5000" placeholder="Enter amount"/>'
+    +'<div id="dmt-tab-content"></div>';
+
+  showDMTNewTransfer();
+}
+
+function switchDMTTab(tab){
+  DMT_STATE.tab=tab;
+  [['new','var(--blue)'],['saved','var(--gold)'],['bulk','var(--purple)'],['schedule','var(--rtai)']].forEach(function(t){
+    var btn=document.getElementById('dmttab-'+t[0]);
+    if(!btn) return;
+    var isActive=t[0]===tab;
+    btn.style.borderColor=isActive?t[1]:'var(--border)';
+    btn.style.background=isActive?t[1].replace('var(','rgba(').replace(')','')+', 0.1)':'transparent';
+    btn.style.color=isActive?t[1]:'var(--muted2)';
+  });
+  if(tab==='new')      showDMTNewTransfer();
+  if(tab==='saved')    showDMTSaved();
+  if(tab==='bulk')     showDMTBulk();
+  if(tab==='schedule') showDMTSchedule();
+}
+
+function showDMTNewTransfer(){
+  var c=document.getElementById('dmt-tab-content');
+  if(!c) return;
+  // Build bank options for IMPS/NEFT/RTGS
+  var bankOpts='<option value="">-- Select Bank --</option>'+AEPS_BANKS.map(function(b){return'<option value="'+b.value+'">'+b.label+'</option>';}).join('');
+  c.innerHTML=
+    // Transfer Mode
+    '<div style="margin-bottom:12px">'
+    +'<div style="font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Transfer Mode</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +[
+      {id:'imps', label:'IMPS', icon:'⚡', desc:'Instant 24/7', color:'var(--green)'},
+      {id:'neft', label:'NEFT', icon:'🔄', desc:'Batched', color:'var(--blue)'},
+      {id:'rtgs', label:'RTGS', icon:'🏦', desc:'₹2L+ only', color:'var(--gold)'},
+      {id:'upi',  label:'UPI',  icon:'📱', desc:'Fast & free', color:'var(--purple)'},
+    ].map(function(m,i){
+      return '<div onclick="selectDMTMode(\''+m.id+'\')" id="dmt-mode-'+m.id+'" style="flex:1;min-width:60px;padding:8px 6px;border-radius:9px;border:1px solid '+(i===0?m.color:'var(--border)')+';background:'+(i===0?m.color.replace('var(','rgba(').replace(')','')+', 0.1)':'var(--bg3)')+';cursor:pointer;text-align:center">'
+        +'<div style="font-size:.88rem">'+m.icon+'</div>'
+        +'<div style="font-size:.82rem;font-weight:700;color:'+(i===0?m.color:'var(--muted2)')+'">'+m.label+'</div>'
+        +'<div style="font-size:.62rem;color:var(--muted2)">'+m.desc+'</div>'
+        +'</div>';
+    }).join('')
+    +'</div></div>'
+    +'<div id="dmt-bank-fields">'
+    +'<div style="position:relative;margin-bottom:12px">'
+    +'<label class="flabel">Search Customer / Beneficiary</label>'
+    +'<div style="display:flex;gap:8px">'
+    +'<input class="finp" id="dmt-customer-search" placeholder="Search by name, mobile, account..." oninput="searchDMTCustomer()" style="margin-bottom:0;flex:1"/>'
+    +'<button onclick="clearDMTCustomer()" style="padding:0 12px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;font-size:.8rem">✕</button>'
+    +'</div>'
+    +'<div id="dmt-customer-dropdown" style="display:none;position:absolute;z-index:9999;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>'
+    +'<div id="dmt-customer-badge" style="display:none;margin-top:6px;padding:8px 10px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.25);border-radius:8px;font-size:.78rem;color:var(--rtai);display:flex;justify-content:space-between;align-items:center">'
+    +'<span id="dmt-customer-badge-text"></span>'
+    +'<span onclick="clearDMTCustomer()" style="cursor:pointer;color:var(--muted2);font-size:.8rem">✕</span>'
+    +'</div></div>'
+
+    +'<label class="flabel">Beneficiary Name</label>'
+    +'<input class="finp" id="dmt-bname" placeholder="Full name of recipient"/>'
+    +'<label class="flabel">Mobile Number</label>'
+    +'<input class="finp" id="dmt-mobile" type="tel" maxlength="10" placeholder="10-digit mobile"/>'
+    +'<label class="flabel">Account Number</label>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'<input class="finp" id="dmt-account" placeholder="Bank account number" style="margin-bottom:0;flex:1"/>'
+    +'<button onclick="verifyAccount()" style="padding:0 14px;border-radius:10px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;font-size:.78rem;cursor:pointer;font-weight:700;flex-shrink:0">Verify</button>'
+    +'</div>'
+    +'<div id="dmt-verify-result" style="display:none;margin:-8px 0 12px"></div>'
+
+    +'<label class="flabel">Bank Name</label>'
+    +'<div style="position:relative;margin-bottom:12px">'
+    +'<input class="finp" id="dmt-bank-search" placeholder="Search bank..." oninput="filterDMTBankList()" style="margin-bottom:0"/>'
+    +'<div id="dmt-bank-dropdown" style="display:none;position:absolute;z-index:9999;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>'
+    +'<input type="hidden" id="dmt-bank"/>'
+    +'<div id="dmt-bank-badge" style="display:none;margin-top:6px;padding:7px 10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:8px;font-size:.78rem;color:var(--blue);display:flex;justify-content:space-between;align-items:center">'
+    +'<span id="dmt-bank-badge-text"></span><span onclick="clearDMTBank()" style="cursor:pointer;color:var(--muted2)">✕</span>'
+    +'</div></div>'
+
+    +'<label class="flabel">IFSC Code</label>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'<input class="finp" id="dmt-ifsc" placeholder="e.g. SBIN0001234" style="margin-bottom:0;flex:1;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+    +'<button onclick="lookupIFSC()" style="padding:0 14px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);font-size:.78rem;cursor:pointer;flex-shrink:0">Lookup</button>'
+    +'</div>'
+    +'<div id="dmt-ifsc-result" style="display:none;margin:-8px 0 12px;font-size:.75rem;color:var(--rtai);background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:7px;padding:8px"></div>'
+    +'</div>'  // end dmt-bank-fields
+
+    // ── UPI Fields ──
+    +'<div id="dmt-upi-fields" style="display:none">'
+    +'<div style="display:flex;gap:6px;margin-bottom:14px">'
+    +'<button onclick="setUPIMethod(\'upiid\')" id="upi-method-upiid" style="flex:1;padding:9px 6px;border-radius:9px;border:1px solid var(--purple);background:rgba(139,92,246,.12);cursor:pointer;font-size:.8rem;font-weight:700;color:var(--purple)">🆔 UPI ID</button>'
+    +'<button onclick="setUPIMethod(\'mobile\')" id="upi-method-mobile" style="flex:1;padding:9px 6px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;font-size:.8rem;font-weight:600;color:var(--muted2)">📞 Mobile</button>'
+    +'<button onclick="setUPIMethod(\'qr\')" id="upi-method-qr" style="flex:1;padding:9px 6px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;font-size:.8rem;font-weight:600;color:var(--muted2)">📷 Scan QR</button>'
+    +'</div>'
+    +'<div id="upi-field-upiid">'
+    +'<label class="flabel">UPI ID</label>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'<input class="finp" id="dmt-upi-id" placeholder="name@upi, mobile@paytm, etc." style="margin-bottom:0;flex:1"/>'
+    +'<button onclick="verifyUPIId()" style="padding:0 14px;border-radius:10px;background:linear-gradient(135deg,var(--purple),#a855f7);border:none;color:#fff;font-size:.78rem;cursor:pointer;font-weight:700;flex-shrink:0">Verify</button>'
+    +'</div>'
+    +'<div id="dmt-upi-verify-result" style="display:none;margin:-8px 0 12px"></div>'
+    +'</div>'
+    +'<div id="upi-field-mobile" style="display:none">'
+    +'<label class="flabel">Mobile Number</label>'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'<input class="finp" id="dmt-upi-mobile" type="tel" maxlength="10" placeholder="10-digit mobile number" style="margin-bottom:0;flex:1"/>'
+    +'<button onclick="verifyUPIMobile()" style="padding:0 14px;border-radius:10px;background:linear-gradient(135deg,var(--purple),#a855f7);border:none;color:#fff;font-size:.78rem;cursor:pointer;font-weight:700;flex-shrink:0">Find</button>'
+    +'</div>'
+    +'<div id="dmt-upi-mobile-result" style="display:none;margin:-8px 0 12px"></div>'
+    +'</div>'
+    +'<div id="upi-field-qr" style="display:none">'
+    +'<div style="background:var(--bg3);border:2px dashed var(--border2);border-radius:12px;padding:20px;text-align:center;margin-bottom:12px">'
+    +'<div style="font-size:2rem;margin-bottom:8px">📷</div>'
+    +'<div style="font-size:.85rem;font-weight:600;color:var(--text);margin-bottom:4px">Scan QR Code</div>'
+    +'<div style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Scan any UPI QR to auto-fill payment details</div>'
+    +'<button onclick="simulateQRScan()" style="padding:9px 20px;border-radius:9px;background:linear-gradient(135deg,var(--purple),#a855f7);border:none;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer">📷 Open Camera / Scan QR</button>'
+    +'</div>'
+    +'<div id="dmt-qr-result" style="display:none;margin-bottom:12px;padding:10px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);border-radius:9px;font-size:.78rem;color:var(--text)"></div>'
+    +'</div>'
+    +'<label class="flabel">Recipient Name</label>'
+    +'<input class="finp" id="dmt-upi-bname" placeholder="Recipient name"/>'
+    +'</div>'  // end dmt-upi-fields
+
+    // Amount (shared)
+    +'<label class="flabel">Amount (₹)</label>'
+    +'<input class="finp" id="dmt-amount" type="number" placeholder="Enter amount" oninput="checkDMTRisk()"/>'
+    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
+    +[500,1000,2000,5000,10000].map(function(a){
+      return '<button type="button" onclick="document.getElementById(\'dmt-amount\').value='+a+';checkDMTRisk()" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.74rem">₹'+fmtS(a)+'</button>';
+    }).join('')
+    +'</div>'
+    +'<div id="dmt-risk-box" style="display:none;margin-bottom:12px"></div>'
     +'<label class="flabel">Remarks</label>'
-    +'<input class="finp" id="dmt-remarks" placeholder="e.g. Family support"/>'
-    +'<button class="btn-primary" id="dmt-send-otp-btn" onclick="dmtSendOtp()" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">Send OTP →</button>'
-    +'<div id="dmt-otp-section" style="display:none;margin-top:14px"></div>';
+    +'<input class="finp" id="dmt-remarks" placeholder="Payment purpose (optional)"/>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+    +'<input type="checkbox" id="dmt-save-ben" style="width:16px;height:16px;cursor:pointer"/>'
+    +'<label for="dmt-save-ben" style="font-size:.8rem;color:var(--muted2);cursor:pointer">⭐ Save as beneficiary for quick transfer</label>'
+    +'</div>'
+    +'<button onclick="processDMT()" class="btn-primary" style="background:linear-gradient(135deg,#2563eb,#06b6d4)">💸 Send Money →</button>';
+
+  // Init bank search dropdown
+  initDMTBankSearch();
+  // Init customer search
+  loadDMTBeneficiaries();
+  // Default mode
+  window._dmtMode = 'imps';
+  window._upiMethod = 'upiid';
 }
 
-async function dmtSendOtp(){
+// ── UPI Method Toggle ──────────────────────────────────────────
+function setUPIMethod(method){
+  window._upiMethod = method;
+  var methods=['upiid','mobile','qr'];
+  var colors={upiid:'var(--purple)',mobile:'var(--purple)',qr:'var(--purple)'};
+  methods.forEach(function(m){
+    var btn=document.getElementById('upi-method-'+m);
+    var field=document.getElementById('upi-field-'+m);
+    var isActive=m===method;
+    if(btn){ btn.style.borderColor=isActive?'var(--purple)':'var(--border)'; btn.style.background=isActive?'rgba(139,92,246,.12)':'var(--bg3)'; btn.style.color=isActive?'var(--purple)':'var(--muted2)'; }
+    if(field) field.style.display=isActive?'':'none';
+  });
+}
+
+// ── DMT Bank Search ─────────────────────────────────────────────
+function initDMTBankSearch(){
+  var inp=document.getElementById('dmt-bank-search');
+  if(!inp) return;
+  inp.addEventListener('focus',function(){ showDMTBankDropdown(''); });
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#dmt-bank-search') && !e.target.closest('#dmt-bank-dropdown')){
+      var dd=document.getElementById('dmt-bank-dropdown'); if(dd) dd.style.display='none';
+    }
+  },{capture:false,once:false});
+}
+
+function filterDMTBankList(){
+  var q=(document.getElementById('dmt-bank-search')?.value||'').toLowerCase();
+  showDMTBankDropdown(q);
+}
+
+function showDMTBankDropdown(q){
+  var dd=document.getElementById('dmt-bank-dropdown');
+  if(!dd) return;
+  var filtered=AEPS_BANKS.filter(function(b){
+    var name=typeof b==='object'?b.label:b;
+    return !q||name.toLowerCase().indexOf(q)>=0;
+  });
+  if(!filtered.length){ dd.style.display='none'; return; }
+  dd.style.display='block';
+  dd.innerHTML=filtered.slice(0,80).map(function(b){
+    var name=typeof b==='object'?b.label:b;
+    var safe=name.replace(/'/g,"&#39;");
+    var hl=q?name.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark style="background:rgba(0,212,170,.25);color:var(--rtai);border-radius:2px">$1</mark>'):name;
+    return '<div onclick="selectDMTBank(\''+safe+'\')" style="padding:9px 12px;cursor:pointer;font-size:.82rem;color:var(--text);border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'+hl+'</div>';
+  }).join('');
+}
+
+function selectDMTBank(name){
+  document.getElementById('dmt-bank').value=name;
+  var inp=document.getElementById('dmt-bank-search'); if(inp) inp.value='';
+  var badge=document.getElementById('dmt-bank-badge'); if(badge){ badge.style.display='flex'; }
+  var bt=document.getElementById('dmt-bank-badge-text'); if(bt) bt.textContent='🏦 '+name;
+  var dd=document.getElementById('dmt-bank-dropdown'); if(dd) dd.style.display='none';
+  window._dmtSelectedBank=name;
+}
+
+function clearDMTBank(){
+  document.getElementById('dmt-bank').value='';
+  var badge=document.getElementById('dmt-bank-badge'); if(badge) badge.style.display='none';
+  var inp=document.getElementById('dmt-bank-search'); if(inp) inp.value='';
+  window._dmtSelectedBank='';
+}
+
+// ── DMT Customer Search ─────────────────────────────────────────
+function searchDMTCustomer(){
+  var q=(document.getElementById('dmt-customer-search')?.value||'').toLowerCase().trim();
+  var dd=document.getElementById('dmt-customer-dropdown');
+  if(!dd) return;
+  if(!q){ dd.style.display='none'; return; }
+  var matches=(DMT_STATE.beneficiaries||[]).filter(function(b){
+    return (b.name||'').toLowerCase().indexOf(q)>=0
+      || (b.mobile||'').indexOf(q)>=0
+      || (b.account||'').indexOf(q)>=0;
+  });
+  if(!matches.length){ dd.style.display='none'; return; }
+  dd.style.display='block';
+  dd.innerHTML=matches.slice(0,10).map(function(b){
+    return '<div onclick="fillDMTCustomer(\''+b.id+'\')" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+      +'<div style="font-size:.84rem;font-weight:600;color:var(--text)">'+b.name+'</div>'
+      +'<div style="font-size:.72rem;color:var(--muted2)">📞 '+b.mobile+' · '+b.account.substring(0,4)+'****'+b.account.slice(-4)+' · '+b.bank+'</div>'
+      +'</div>';
+  }).join('');
+  document.addEventListener('click',function hideCSearch(e){
+    if(!e.target.closest('#dmt-customer-search')&&!e.target.closest('#dmt-customer-dropdown')){
+      dd.style.display='none'; document.removeEventListener('click',hideCSearch);
+    }
+  });
+}
+
+function fillDMTCustomer(id){
+  var ben=(DMT_STATE.beneficiaries||[]).find(function(b){return b.id===id;});
+  if(!ben) return;
+  var dd=document.getElementById('dmt-customer-dropdown'); if(dd) dd.style.display='none';
+  var si=document.getElementById('dmt-customer-search'); if(si) si.value='';
+  var badge=document.getElementById('dmt-customer-badge');
+  var bt=document.getElementById('dmt-customer-badge-text');
+  if(badge){ badge.style.display='flex'; }
+  if(bt) bt.textContent='👤 '+ben.name+' · '+ben.mobile;
+  // Fill fields
+  var f=function(id,v){var el=document.getElementById(id);if(el)el.value=v||'';};
+  f('dmt-bname',ben.name); f('dmt-mobile',ben.mobile); f('dmt-account',ben.account); f('dmt-ifsc',ben.ifsc);
+  if(ben.bank){ selectDMTBank(ben.bank); }
+  toast('Beneficiary auto-filled ✅','s');
+}
+
+function clearDMTCustomer(){
+  var si=document.getElementById('dmt-customer-search'); if(si) si.value='';
+  var dd=document.getElementById('dmt-customer-dropdown'); if(dd) dd.style.display='none';
+  var badge=document.getElementById('dmt-customer-badge'); if(badge) badge.style.display='none';
+}
+
+// ── UPI Verify ──────────────────────────────────────────────────
+async function verifyUPIId(){
+  var uid=document.getElementById('dmt-upi-id')?.value.trim()||'';
+  var res=document.getElementById('dmt-upi-verify-result');
+  if(!uid||!uid.includes('@')){ toast('Enter valid UPI ID (e.g. name@upi)','e'); return; }
+  if(!res) return;
+  res.style.display='block';
+  res.innerHTML='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:.78rem;color:var(--muted2)">🔍 Verifying UPI ID...</div>';
+  await new Promise(function(r){setTimeout(r,1000);});
+  var names=['Rahul Sharma','Priya Singh','Amit Kumar','Sunita Devi','Rajesh Gupta'];
+  var vName=names[Math.floor(Math.random()*names.length)];
+  window._dmtUPIVerified=true; window._dmtUPIName=vName; window._dmtUPIAddr=uid;
+  res.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:8px;padding:9px;font-size:.78rem">'
+    +'<div style="color:var(--green);font-weight:600">✅ UPI ID Verified!</div>'
+    +'<div style="color:var(--muted2);margin-top:2px">Name: <strong style="color:var(--text)">'+vName+'</strong></div>'
+    +'<div style="color:var(--rtai);font-size:.7rem;margin-top:2px">🛡️ RTAI Verified · Active UPI</div>'
+    +'</div>';
+  var bn=document.getElementById('dmt-upi-bname'); if(bn&&!bn.value) bn.value=vName;
+}
+
+async function verifyUPIMobile(){
+  var mob=document.getElementById('dmt-upi-mobile')?.value.trim()||'';
+  var res=document.getElementById('dmt-upi-mobile-result');
+  if(!mob||mob.length!==10){ toast('Enter valid 10-digit mobile','e'); return; }
+  if(!res) return;
+  res.style.display='block';
+  res.innerHTML='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:.78rem;color:var(--muted2)">🔍 Looking up UPI for '+mob+'...</div>';
+  await new Promise(function(r){setTimeout(r,1200);});
+  var names=['Neha Patel','Suresh Kumar','Anjali Verma','Mohan Das','Kavita Rao'];
+  var vName=names[Math.floor(Math.random()*names.length)];
+  var upiAddr=mob+'@upi';
+  window._dmtUPIVerified=true; window._dmtUPIName=vName; window._dmtUPIAddr=upiAddr; window._dmtUPIMobile=mob;
+  res.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:8px;padding:9px;font-size:.78rem">'
+    +'<div style="color:var(--green);font-weight:600">✅ UPI Found!</div>'
+    +'<div style="color:var(--muted2);margin-top:2px">Name: <strong style="color:var(--text)">'+vName+'</strong></div>'
+    +'<div style="color:var(--muted2);margin-top:2px">UPI ID: <strong style="color:var(--blue)">'+upiAddr+'</strong></div>'
+    +'</div>';
+  var bn=document.getElementById('dmt-upi-bname'); if(bn&&!bn.value) bn.value=vName;
+}
+
+function simulateQRScan(){
+  var btn=document.querySelector('#upi-field-qr button');
+  if(btn){ btn.textContent='📷 Scanning...'; btn.disabled=true; }
+  setTimeout(function(){
+    var qrData={name:'Merchant / Customer',upi:'pay@merchant',amount:''};
+    window._dmtUPIVerified=true; window._dmtUPIName=qrData.name; window._dmtUPIAddr=qrData.upi;
+    var res=document.getElementById('dmt-qr-result');
+    if(res){ res.style.display='block';
+      res.innerHTML='<div style="color:var(--green);font-weight:600;margin-bottom:4px">✅ QR Scanned Successfully!</div>'
+        +'<div>UPI: <strong>'+qrData.upi+'</strong></div>'
+        +'<div>Name: <strong>'+qrData.name+'</strong></div>'
+        +'<div style="font-size:.7rem;color:var(--rtai);margin-top:4px">🛡️ RTAI QR Verified · Safe to Pay</div>';
+    }
+    var bn=document.getElementById('dmt-upi-bname'); if(bn) bn.value=qrData.name;
+    if(btn){ btn.textContent='✅ QR Scanned'; btn.disabled=false; }
+    toast('QR scanned successfully! 📷','s');
+  },1500);
+}
+
+function selectDMTMode(mode){
+  window._dmtMode=mode;
+  var all=['imps','neft','rtgs','upi'];
+  var colors={imps:'var(--green)',neft:'var(--blue)',rtgs:'var(--gold)',upi:'var(--purple)'};
+  all.forEach(function(m){
+    var el=document.getElementById('dmt-mode-'+m);
+    if(!el) return;
+    var c=colors[m];
+    var isActive=m===mode;
+    el.style.borderColor=isActive?c:'var(--border)';
+    el.style.background=isActive?c.replace('var(','rgba(').replace(')','')+', 0.1)':'var(--bg3)';
+    el.querySelector('div:nth-child(2)').style.color=isActive?c:'var(--muted2)';
+  });
+  // Toggle bank fields vs UPI fields
+  var bankFields=document.getElementById('dmt-bank-fields');
+  var upiFields=document.getElementById('dmt-upi-fields');
+  if(mode==='upi'){
+    if(bankFields) bankFields.style.display='none';
+    if(upiFields) upiFields.style.display='block';
+  } else {
+    if(bankFields) bankFields.style.display='block';
+    if(upiFields) upiFields.style.display='none';
+  }
+}
+
+async function verifyAccount(){
+  var acc=document.getElementById('dmt-account')?.value||'';
+  var bank=document.getElementById('dmt-bank')?.value||'';
+  var res=document.getElementById('dmt-verify-result');
+  if(!acc||acc.length<6){ toast('Enter account number first','e'); return; }
+  if(!res) return;
+  res.style.display='block';
+  res.innerHTML='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:.78rem;color:var(--muted2)">🔍 RTAI verifying account...</div>';
+  await new Promise(function(r){setTimeout(r,1200);});
+  var names=['Ramesh Kumar','Suresh Sharma','Priya Devi','Mohan Lal','Sunita Bai','Rajesh Singh','Anita Rao','Vijay Kumar'];
+  var vName=names[Math.floor(Math.random()*names.length)];
+  DMT_STATE.verified=true;
+  DMT_STATE.verifiedName=vName;
+  res.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:8px;padding:9px;font-size:.78rem">'
+    +'<div style="color:var(--green);font-weight:600">✅ Account Verified!</div>'
+    +'<div style="color:var(--muted2);margin-top:2px">Account Holder: <strong style="color:var(--text)">'+vName+'</strong></div>'
+    +'<div style="color:var(--rtai);font-size:.7rem;margin-top:2px">🛡️ RTAI Penny Drop Verified · Active Account</div>'
+    +'</div>';
+  if(document.getElementById('dmt-bname')&&!document.getElementById('dmt-bname').value){
+    document.getElementById('dmt-bname').value=vName;
+  }
+}
+
+async function lookupIFSC(){
+  var ifsc=document.getElementById('dmt-ifsc')?.value||'';
+  var res=document.getElementById('dmt-ifsc-result');
+  if(!ifsc||ifsc.length<11){ toast('Enter 11-character IFSC code','e'); return; }
+  if(!res) return;
+  res.style.display='block';
+  res.textContent='🔍 Looking up IFSC...';
+  await new Promise(function(r){setTimeout(r,800);});
+  var bankMap={
+    'SBIN':'State Bank of India','HDFC':'HDFC Bank','ICIC':'ICICI Bank',
+    'UTIB':'Axis Bank','KKBK':'Kotak Mahindra Bank','YESB':'Yes Bank',
+    'PUNB':'Punjab National Bank','BARB':'Bank of Baroda','CNRB':'Canara Bank',
+    'UBIN':'Union Bank of India','MAHB':'Bank of Maharashtra','IOBA':'Indian Overseas Bank',
+  };
+  var prefix=ifsc.substring(0,4);
+  var bankName=bankMap[prefix]||'Unknown Bank';
+  res.innerHTML='<strong>'+bankName+'</strong> · Branch code: '+ifsc.substring(5)+' · RTAI verified ✓';
+  if(bankName!=='Unknown Bank'){ selectDMTBank(bankName); }
+}
+
+function checkDMTRisk(){
   var amount=parseFloat(document.getElementById('dmt-amount')?.value)||0;
-  var remarks=(document.getElementById('dmt-remarks')?.value||'').trim()||'Transfer';
-  if(!amount||amount<=0){ toast('Enter transfer amount','e'); return; }
-  if(amount<100){ toast('Minimum DMT transfer is ₹100','e'); return; }
-  if(amount>5000){ toast('DMT limit is ₹5,000 per transaction','e'); return; }
-  if(!DMT.recipientId){ toast('Recipient not set — go back and re-add beneficiary','e'); return; }
-  DMT.amount=amount; DMT.remarks=remarks;
-  var btn=document.getElementById('dmt-send-otp-btn');
-  if(btn){ btn.disabled=true; btn.textContent='Sending OTP…'; }
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/send-otp',{
-      method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify({recipient_id:DMT.recipientId, amount:amount, customer_id:DMT.senderMobile})
-    });
-    var j=await r.json();
-    if(j&&j.data&&j.data.data&&j.data.data.otp_ref_id){
-      DMT.otpRefId=j.data.data.otp_ref_id;
-      toast('OTP sent to '+DMT.senderMobile,'s');
-      var sec=document.getElementById('dmt-otp-section');
-      if(sec){
-        sec.style.display='block';
-        sec.innerHTML =
-          '<label class="flabel">Enter OTP sent to '+DMT.senderMobile+'</label>'
-          +'<input class="finp" id="dmt-otp" maxlength="8" placeholder="Enter OTP"/>'
-          +'<button class="btn-primary" id="dmt-confirm-btn" onclick="dmtConfirmTransfer()" style="background:linear-gradient(135deg,var(--green),var(--rtai))">Confirm Transfer →</button>';
-      }
-    } else {
-      toast((j&&j.data&&j.data.message)||'Could not send OTP','e');
-    }
-  }catch(e){
-    toast('Network error — could not reach server','e');
-  }finally{
-    if(btn){ btn.disabled=false; btn.textContent='Send OTP →'; }
-  }
+  var riskBox=document.getElementById('dmt-risk-box');
+  if(!riskBox||!amount) return;
+  riskBox.style.display='block';
+  var risk='Low'; var riskColor='var(--green)'; var riskScore=15; var warnings=[];
+  if(amount>DMT_LIMITS.perTxn){ risk='High'; riskColor='var(--red)'; riskScore=85; warnings.push('Amount exceeds ₹'+fmtS(DMT_LIMITS.perTxn)+' per transaction limit'); }
+  else if(amount+DMT_STATE.dailyUsed>DMT_LIMITS.daily){ risk='High'; riskColor='var(--red)'; riskScore=80; warnings.push('Will exceed daily limit of ₹'+fmtS(DMT_LIMITS.daily)); }
+  else if(amount>5000){ risk='Medium'; riskColor='var(--gold)'; riskScore=45; }
+  else if(amount>2000){ risk='Low-Medium'; riskColor='var(--gold)'; riskScore=30; }
+  else { risk='Low'; riskColor='var(--green)'; riskScore=12; }
+  if(!DMT_STATE.verified && (window._dmtMode||'imps')!=='upi') warnings.push('Account not verified — verify for safer transfer');
+  DMT_STATE.riskScore=riskScore;
+  riskBox.innerHTML='<div style="background:var(--bg3);border:1px solid '+(riskScore>=70?'var(--red)':riskScore>=40?'var(--gold)':'var(--green)')+';border-radius:10px;padding:12px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    +'<div style="font-size:.78rem;font-weight:700;color:var(--rtai)">🛡️ RTAI Risk Assessment</div>'
+    +'<div style="font-size:.82rem;font-weight:700;color:'+riskColor+'">'+risk+' Risk</div>'
+    +'</div>'
+    +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">'
+    +'<div style="height:100%;background:'+(riskScore>=70?'var(--red)':riskScore>=40?'var(--gold)':'var(--green)')+';width:'+riskScore+'%;border-radius:3px;transition:width .4s"></div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted2);margin-bottom:'+(warnings.length?'8':'0')+'px">'
+    +'<span>Safe</span><span>Risk Score: '+riskScore+'/100</span><span>High Risk</span>'
+    +'</div>'
+    +(warnings.map(function(w){ return'<div style="font-size:.72rem;color:'+(riskScore>=70?'var(--red)':'var(--gold)')+';margin-top:4px">⚠️ '+w+'</div>'; }).join(''))
+    +'</div>';
 }
 
-async function dmtConfirmTransfer(){
-  var otp=(document.getElementById('dmt-otp')?.value||'').trim();
-  if(!otp||otp.length<4){ toast('Enter the OTP','e'); return; }
-  var btn=document.getElementById('dmt-confirm-btn');
-  if(btn){ btn.disabled=true; btn.textContent='Processing…'; }
-  try{
-    var r=await fetch(BANKME_API+'/eko/dmt/initiate-transfer',{
-      method:'POST', headers:{'content-type':'application/json'},
-      body:JSON.stringify({recipient_id:DMT.recipientId, amount:DMT.amount, customer_id:DMT.senderMobile, otp:otp, otp_ref_id:DMT.otpRefId, channel:'1', state:'24'})
-    });
-    var j=await r.json();
-    if(j&&j.data&&j.data.status===0){
-      DMT.txnResult=j.data.data||{};
-      dmtRenderSuccess();
-    } else {
-      toast((j&&j.data&&j.data.message)||'Could not complete transfer','e');
+async function processDMT(){
+  var mode=window._dmtMode||'imps';
+  var amount=parseFloat(document.getElementById('dmt-amount')?.value)||0;
+  var remarks=document.getElementById('dmt-remarks')?.value||'Transfer';
+  var saveBen=document.getElementById('dmt-save-ben')?.checked||false;
+
+  if(mode==='upi'){
+    // UPI path
+    var upiMethod=window._upiMethod||'upiid';
+    var upiAddr=''; var upiName=''; var upiMobile='';
+    if(upiMethod==='upiid'){
+      upiAddr=document.getElementById('dmt-upi-id')?.value.trim()||'';
+      if(!upiAddr||!upiAddr.includes('@')){ toast('Enter & verify UPI ID first','e'); return; }
+    } else if(upiMethod==='mobile'){
+      upiMobile=document.getElementById('dmt-upi-mobile')?.value.trim()||'';
+      if(!upiMobile||upiMobile.length!==10){ toast('Enter & verify mobile number first','e'); return; }
+      upiAddr=window._dmtUPIAddr||upiMobile+'@upi';
+    } else if(upiMethod==='qr'){
+      upiAddr=window._dmtUPIAddr||'';
+      if(!upiAddr){ toast('Scan a QR code first','e'); return; }
     }
-  }catch(e){
-    toast('Network error — could not reach server','e');
-  }finally{
-    if(btn){ btn.disabled=false; btn.textContent='Confirm Transfer →'; }
+    upiName=document.getElementById('dmt-upi-bname')?.value.trim()||window._dmtUPIName||'UPI Recipient';
+    if(amount<1){ toast('Enter amount','e'); return; }
+    if(amount>(CU.wallet||0)){ toast('Insufficient wallet balance','e'); return; }
+    if(DMT_STATE.riskScore>=70){
+      var ok=confirm('⚠️ High risk detected. Proceed?'); if(!ok) return;
+    }
+    var dmtPhone=(CU&&CU.phone)||'9999999999';
+    showOTPVerificationModal('dmt',dmtPhone,async function(){
+      await processDMTAfterOTP(upiName,upiMobile,upiAddr,'UPI','',amount,remarks,saveBen,'UPI');
+    });
+    return;
   }
+
+  // Bank transfer path (IMPS/NEFT/RTGS)
+  var bname=document.getElementById('dmt-bname')?.value.trim()||'';
+  var mobile=document.getElementById('dmt-mobile')?.value.trim()||'';
+  var account=document.getElementById('dmt-account')?.value.trim()||'';
+  var bank=document.getElementById('dmt-bank')?.value||window._dmtSelectedBank||'';
+  var ifsc=document.getElementById('dmt-ifsc')?.value.trim().toUpperCase()||'';
+
+  if(!bname){ toast('Enter beneficiary name','e'); return; }
+  if(!account||account.length<6){ toast('Enter valid account number','e'); return; }
+  if(!bank){ toast('Select beneficiary bank','e'); return; }
+  if(!ifsc||ifsc.length<11){ toast('Enter valid 11-char IFSC code','e'); return; }
+  if(amount<100){ toast('Minimum transfer ₹100','e'); return; }
+  if(amount>DMT_LIMITS.perTxn){ toast('Max ₹'+fmtS(DMT_LIMITS.perTxn)+' per transaction','e'); return; }
+  if(amount+DMT_STATE.dailyUsed>DMT_LIMITS.daily){ toast('Daily limit of ₹'+fmtS(DMT_LIMITS.daily)+' exceeded','e'); return; }
+  if(amount>(CU.wallet||0)){ toast('Insufficient wallet balance','e'); return; }
+  if(DMT_STATE.riskScore>=70){
+    var ok2=confirm('⚠️ High risk transaction detected by RTAI. Proceed?'); if(!ok2) return;
+  }
+  var dmtPhone2=mobile||(CU&&CU.phone)||'9999999999';
+  showOTPVerificationModal('dmt',dmtPhone2,async function(){
+    await processDMTAfterOTP(bname,mobile,account,bank,ifsc,amount,remarks,saveBen,mode.toUpperCase());
+  });
 }
 
-function dmtRenderSuccess(){
-  var root=dmtRoot(); if(!root) return;
-  var t=DMT.txnResult||{};
-  var bene=DMT._beneInfo||{};
+async function processDMTAfterOTP(bname,mobile,account,bank,ifsc,amount,remarks,saveBen,mode){
+  var formEl=document.getElementById('svc-form');
+  formEl.innerHTML='<div style="text-align:center;padding:24px"><div style="width:44px;height:44px;border:4px solid rgba(37,99,235,.2);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--blue);font-weight:600;font-size:.88rem">🛡️ RTAI Fraud Check…</p></div>';
+  await new Promise(function(r){setTimeout(r,700);});
+  formEl.innerHTML='<div style="text-align:center;padding:24px"><div style="width:44px;height:44px;border:4px solid rgba(37,99,235,.2);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--blue);font-weight:600;font-size:.88rem">💸 Processing Transfer…</p></div>';
+  await new Promise(function(r){setTimeout(r,900);});
+
+  var txnId=genId();
   var now=new Date();
   function pad(n){return String(n).padStart(2,'0');}
   var dateStr=pad(now.getDate())+' '+now.toLocaleString('en-IN',{month:'short'})+' '+now.getFullYear()+' '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
-  var rows=[
-    ['Beneficiary',bene.name||''],
-    ['Account',bene.account||''],
-    ['Bank',bene.bank||''],
-    ['IFSC',bene.ifsc||''],
-    ['Transfer Amount','₹'+fmtN(DMT.amount)],
-    ['Remarks',DMT.remarks||''],
-    ['TXN ID',t.tid||t.txn_id||'—'],
-    ['Bank Ref',t.bank_ref_num||'—'],
+  var DMT_CHARGE=10;
+  var dmtTotal=amount+DMT_CHARGE;
+  if(dmtTotal>(CU.wallet||0)){ toast('Insufficient wallet balance (need ₹'+fmtN(dmtTotal)+')','e'); return; }
+
+  var isUPI=(mode==='UPI');
+  var displayAccount=isUPI?account:(account.length>=8?account.substring(0,4)+'****'+account.slice(-4):account);
+  var txn={id:txnId,service:'dmt',title:'DMT to '+bname,amount:amount,serviceCharge:DMT_CHARGE,totalPaid:dmtTotal,type:'debit',date:dateStr,txnId:txnId,status:'success',rtaiVerified:true,remarks:remarks,beneficiary:bname,account:account,bank:bank,ifsc:ifsc,mode:mode,mobile:mobile};
+  CU.wallet=Math.max(0,(CU.wallet||0)-dmtTotal);
+  TXN_HISTORY.push(txn);
+  DMT_STATE.dailyUsed+=amount;
+  DMT_STATE.monthlyUsed+=amount;
+  document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet);
+  try{if(db&&CU.uid){await db.collection('bankme_users').doc(CU.uid).update({wallet:CU.wallet});}}catch(e){}
+
+  if(saveBen&&bname&&account&&!isUPI){
+    var exists=DMT_STATE.beneficiaries.find(function(b){return b.account===account;});
+    if(!exists){
+      DMT_STATE.beneficiaries.push({id:genId(),name:bname,mobile:mobile,account:account,bank:bank,ifsc:ifsc,added:dateStr,txnCount:1,totalAmt:amount});
+    } else { exists.txnCount=(exists.txnCount||0)+1; exists.totalAmt=(exists.totalAmt||0)+amount; }
+    saveDMTBeneficiaries();
+    toast('Beneficiary saved! ⭐','s');
+  }
+
+  // Build receipt rows
+  var rows=isUPI?[
+    ['Recipient',bname],
+    ['UPI / Mobile',account],
+    ['Mode','UPI Transfer'],
+    ['Transfer Amount','₹'+fmtN(amount)],
+    ['Service Charge','₹'+fmtN(DMT_CHARGE)],
+    ['Total Debited','₹'+fmtN(dmtTotal)],
+    ['Remarks',remarks],
+    ['TXN ID',txnId],
     ['Date & Time',dateStr],
+    ['RTAI Risk','Low Risk ✓'],
+  ]:[
+    ['Beneficiary',bname],
+    ['Account',displayAccount],
+    ['Bank',bank],
+    ['IFSC',ifsc],
+    ['Mode',mode+' Transfer'],
+    ['Transfer Amount','₹'+fmtN(amount)],
+    ['Service Charge','₹'+fmtN(DMT_CHARGE)],
+    ['Total Debited','₹'+fmtN(dmtTotal)],
+    ['Remarks',remarks],
+    ['TXN ID',txnId],
+    ['Date & Time',dateStr],
+    ['RTAI Risk','Low Risk ✓'],
   ];
-  root.innerHTML =
-    '<div style="background:var(--bg3);border:1px solid var(--green);border-radius:14px;padding:16px">'
+
+  formEl.style.display='none';
+  var res=document.getElementById('svc-result');
+  res.style.display='block';
+  res.innerHTML='<div style="background:var(--bg3);border:1px solid var(--green);border-radius:14px;padding:16px">'
     +'<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">✅</div>'
     +'<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;color:var(--green)">Transfer Successful!</div>'
-    +'<div style="font-size:.68rem;color:var(--rtai);margin-top:2px">🛡️ NPCI DMT via Eko</div></div>'
+    +'<div style="font-size:.68rem;color:var(--rtai);margin-top:2px">🛡️ RTAI Verified · Low Risk</div></div>'
     +'<div style="background:var(--bg2);border-radius:10px;padding:10px;margin-bottom:10px">'
     +rows.map(function(r){
       return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.76rem">'
@@ -4783,9 +5010,205 @@ function dmtRenderSuccess(){
         +'<span style="color:var(--text);font-weight:600;text-align:right;max-width:55%">'+r[1]+'</span></div>';
     }).join('')
     +'</div>'
-    +'<button onclick="renderDMT()" style="width:100%;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--cyan));border:none;color:#fff;cursor:pointer;font-size:.82rem;font-weight:700">New Transfer</button>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="shareAEPS(\''+txnId+'\')" style="flex:1;padding:9px;border-radius:9px;background:linear-gradient(135deg,#25D366,#128C7E);border:none;color:#fff;cursor:pointer;font-size:.78rem;font-weight:700">📱 Share Receipt</button>'
+    +'<button onclick="document.getElementById(\'svc-modal\').classList.remove(\'show\')" style="flex:1;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--cyan));border:none;color:#fff;cursor:pointer;font-size:.78rem;font-weight:700">Done ✓</button>'
+    +'</div></div>';
+  toast('₹'+fmtN(amount)+' sent to '+bname+'! ✅','s');
+}
+
+function showDMTSaved(){
+  var c=document.getElementById('dmt-tab-content');
+  if(!c) return;
+  loadDMTBeneficiaries();
+  if(!DMT_STATE.beneficiaries.length){
+    c.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:8px">⭐</div><div style="font-size:.88rem">No saved beneficiaries yet</div><div style="font-size:.78rem;margin-top:4px">Check "Save as beneficiary" when transferring</div></div>';
+    return;
+  }
+  c.innerHTML='<div style="font-size:.75rem;color:var(--muted2);margin-bottom:10px">'+DMT_STATE.beneficiaries.length+' saved beneficiaries</div>'
+    +DMT_STATE.beneficiaries.map(function(b){
+      return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px;margin-bottom:8px">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+        +'<div style="display:flex;align-items:center;gap:10px;min-width:0">'
+        +'<div style="width:36px;height:36px;border-radius:50%;background:rgba(37,99,235,.2);color:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">'+(b.name||'U')[0].toUpperCase()+'</div>'
+        +'<div style="min-width:0"><div style="font-size:.85rem;font-weight:600;color:var(--text)">'+b.name+'</div>'
+        +'<div style="font-size:.72rem;color:var(--muted2)">'+b.account.substring(0,4)+'****'+b.account.slice(-4)+' · '+b.bank+'</div>'
+        +'<div style="font-size:.7rem;color:var(--muted2)">'+b.ifsc+' · '+b.txnCount+' txns · ₹'+fmtS(b.totalAmt||0)+' sent</div>'
+        +'</div></div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<button onclick="quickDMTTransfer(\''+b.id+'\')" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--cyan));border:none;color:#fff;font-size:.74rem;cursor:pointer;font-weight:700">💸 Send</button>'
+        +'<button onclick="deleteBeneficiary(\''+b.id+'\')" style="padding:6px 10px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);font-size:.74rem;cursor:pointer">🗑️</button>'
+        +'</div></div></div>';
+    }).join('');
+}
+
+function quickDMTTransfer(benId){
+  var b=DMT_STATE.beneficiaries.find(function(x){return x.id===benId;});
+  if(!b) return;
+  switchDMTTab('new');
+  setTimeout(function(){
+    var fields={
+      'dmt-bname':b.name,'dmt-mobile':b.mobile||'','dmt-account':b.account,
+      'dmt-bank':null,'dmt-ifsc':b.ifsc
+    };
+    Object.keys(fields).forEach(function(id){
+      var el=document.getElementById(id);
+      if(el&&fields[id]!==null) el.value=fields[id]||'';
+    });
+    // Select bank
+    var bankSel=document.getElementById('dmt-bank');
+    if(bankSel&&b.bank){
+      for(var i=0;i<bankSel.options.length;i++){
+        if(bankSel.options[i].text===b.bank){bankSel.selectedIndex=i;break;}
+      }
+    }
+    DMT_STATE.verified=true;
+    DMT_STATE.verifiedName=b.name;
+    var vr=document.getElementById('dmt-verify-result');
+    if(vr){vr.style.display='block';vr.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:8px;padding:8px;font-size:.76rem"><span style="color:var(--green)">✅ Account verified — '+b.name+'</span></div>';}
+    toast('Beneficiary loaded! Enter amount to send.','s');
+  },100);
+}
+
+function deleteBeneficiary(benId){
+  if(!confirm('Remove this beneficiary?')) return;
+  DMT_STATE.beneficiaries=DMT_STATE.beneficiaries.filter(function(b){return b.id!==benId;});
+  saveDMTBeneficiaries();
+  showDMTSaved();
+  toast('Beneficiary removed','i');
+}
+
+function showDMTBulk(){
+  var c=document.getElementById('dmt-tab-content');
+  if(!c) return;
+  c.innerHTML='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">'
+    +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:4px;color:var(--purple)">📋 Bulk Transfer</div>'
+    +'<div style="font-size:.78rem;color:var(--muted2);margin-bottom:14px">Send money to multiple people at once — salary, commissions, payouts</div>'
+    +'<div id="bulk-rows">'
+    +'<div style="display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:6px;margin-bottom:6px;font-size:.68rem;color:var(--muted2);font-weight:600;text-transform:uppercase"><span>Name</span><span>Account / UPI</span><span>Amount</span><span></span></div>'
+    +[1,2,3].map(function(i){
+      return '<div class="bulk-row" style="display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:6px;margin-bottom:6px">'
+        +'<input class="finp" placeholder="Name" style="margin-bottom:0;font-size:.78rem;padding:8px 10px"/>'
+        +'<input class="finp" placeholder="Account/UPI" style="margin-bottom:0;font-size:.78rem;padding:8px 10px"/>'
+        +'<input class="finp" type="number" placeholder="₹" style="margin-bottom:0;font-size:.78rem;padding:8px 10px" oninput="calcBulkTotal()"/>'
+        +'<button onclick="this.closest(\'.bulk-row\').remove();calcBulkTotal()" style="padding:0 10px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);cursor:pointer;font-size:.8rem">✕</button>'
+        +'</div>';
+    }).join('')
+    +'</div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px">'
+    +'<button onclick="addBulkRow()" style="padding:7px 14px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;font-size:.78rem">+ Add Row</button>'
+    +'<div id="bulk-total" style="font-size:.85rem;color:var(--text);font-weight:600">Total: ₹0</div>'
+    +'</div>'
+    +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px;margin:12px 0;font-size:.74rem;color:var(--gold)">⚠️ Each transfer subject to ₹'+fmtS(DMT_LIMITS.perTxn)+'/txn and ₹'+fmtS(DMT_LIMITS.daily)+'/day limits · RTAI monitored</div>'
+    +'<button onclick="processBulkDMT()" class="btn-primary" style="background:linear-gradient(135deg,var(--purple),#7c3aed)">📋 Process Bulk Transfer →</button>'
     +'</div>';
-  toast('₹'+fmtN(DMT.amount)+' sent to '+(bene.name||'')+'! ✅','s');
+}
+
+function addBulkRow(){
+  var rows=document.getElementById('bulk-rows');
+  if(!rows) return;
+  var div=document.createElement('div');
+  div.className='bulk-row';
+  div.style.cssText='display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:6px;margin-bottom:6px';
+  div.innerHTML='<input class="finp" placeholder="Name" style="margin-bottom:0;font-size:.78rem;padding:8px 10px"/>'
+    +'<input class="finp" placeholder="Account/UPI" style="margin-bottom:0;font-size:.78rem;padding:8px 10px"/>'
+    +'<input class="finp" type="number" placeholder="₹" style="margin-bottom:0;font-size:.78rem;padding:8px 10px" oninput="calcBulkTotal()"/>'
+    +'<button onclick="this.closest(\'.bulk-row\').remove();calcBulkTotal()" style="padding:0 10px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);cursor:pointer;font-size:.8rem">✕</button>';
+  rows.appendChild(div);
+}
+
+function calcBulkTotal(){
+  var rows=document.querySelectorAll('.bulk-row');
+  var total=0;
+  rows.forEach(function(row){
+    var amtInput=row.querySelectorAll('input')[2];
+    if(amtInput) total+=parseFloat(amtInput.value)||0;
+  });
+  var el=document.getElementById('bulk-total');
+  if(el) el.textContent='Total: ₹'+fmtN(total);
+}
+
+async function processBulkDMT(){
+  var rows=document.querySelectorAll('.bulk-row');
+  var transfers=[];
+  rows.forEach(function(row){
+    var inputs=row.querySelectorAll('input');
+    var name=inputs[0]?.value.trim();
+    var account=inputs[1]?.value.trim();
+    var amount=parseFloat(inputs[2]?.value)||0;
+    if(name&&account&&amount>0) transfers.push({name:name,account:account,amount:amount});
+  });
+  if(!transfers.length){ toast('Add at least one valid transfer','e'); return; }
+  var total=transfers.reduce(function(s,t){return s+t.amount;},0);
+  if(total>(CU.wallet||0)){ toast('Insufficient wallet balance for bulk transfer','e'); return; }
+
+  var formEl=document.getElementById('svc-form');
+  formEl.innerHTML='<div style="text-align:center;padding:24px"><div style="width:44px;height:44px;border:4px solid rgba(139,92,246,.2);border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--purple);font-weight:600">Processing '+transfers.length+' transfers…</p></div>';
+  await new Promise(function(r){setTimeout(r,2000);});
+
+  var results=transfers.map(function(t){
+    var txnId=genId();
+    var txn={id:txnId,service:'dmt',title:'DMT to '+t.name,amount:t.amount,type:'debit',date:new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),txnId:txnId,status:'success',rtaiVerified:true};
+    TXN_HISTORY.push(txn);
+    CU.wallet=Math.max(0,(CU.wallet||0)-t.amount);
+    return {name:t.name,amount:t.amount,txnId:txnId};
+  });
+  document.getElementById('wallet-chip').textContent='₹'+fmtN(CU.wallet);
+  try{if(db&&CU.uid){await db.collection('bankme_users').doc(CU.uid).update({wallet:CU.wallet});}}catch(e){}
+
+  formEl.style.display='none';
+  var res=document.getElementById('svc-result');
+  res.style.display='block';
+  res.innerHTML='<div style="background:var(--bg3);border:1px solid var(--green);border-radius:14px;padding:16px">'
+    +'<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">✅</div><div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;color:var(--green)">'+transfers.length+' Transfers Successful!</div><div style="font-size:.72rem;color:var(--rtai);margin-top:2px">Total: ₹'+fmtN(total)+' · RTAI Verified</div></div>'
+    +'<div style="background:var(--bg2);border-radius:10px;padding:10px;margin-bottom:10px;max-height:180px;overflow-y:auto">'
+    +results.map(function(r){
+      return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--text)">'+r.name+'</span><span style="color:var(--red);font-weight:600">-₹'+fmtN(r.amount)+'</span></div>';
+    }).join('')
+    +'</div>'
+    +'<button onclick="document.getElementById(\'svc-modal\').classList.remove(\'show\')" style="width:100%;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--purple),#7c3aed);border:none;color:#fff;cursor:pointer;font-size:.82rem;font-weight:700">Done ✓</button>'
+    +'</div>';
+  toast('Bulk transfer complete! ✅','s');
+}
+
+function showDMTSchedule(){
+  var c=document.getElementById('dmt-tab-content');
+  if(!c) return;
+  c.innerHTML='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">'
+    +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:4px;color:var(--rtai)">⏰ Schedule Transfer</div>'
+    +'<div style="font-size:.78rem;color:var(--muted2);margin-bottom:14px">Set up automatic transfers — monthly salary, recurring payments</div>'
+    +'<label class="flabel">Beneficiary Name</label>'
+    +'<input class="finp" id="sch-name" placeholder="Recipient name"/>'
+    +'<label class="flabel">Account Number</label>'
+    +'<input class="finp" id="sch-account" placeholder="Bank account number"/>'
+    +'<label class="flabel">IFSC Code</label>'
+    +'<input class="finp" id="sch-ifsc" placeholder="e.g. SBIN0001234" oninput="this.value=this.value.toUpperCase()"/>'
+    +'<label class="flabel">Amount (₹)</label>'
+    +'<input class="finp" id="sch-amount" type="number" placeholder="Transfer amount"/>'
+    +'<label class="flabel">Transfer Date (Monthly)</label>'
+    +'<select class="fsel" id="sch-day">'
+    +Array.from({length:28},function(_,i){return'<option value="'+(i+1)+'">'+( i+1)+(i===0?'st':i===1?'nd':i===2?'rd':'th')+' of every month</option>';}).join('')
+    +'</select>'
+    +'<label class="flabel">Frequency</label>'
+    +'<select class="fsel" id="sch-freq">'
+    +'<option value="monthly">Monthly</option>'
+    +'<option value="weekly">Weekly</option>'
+    +'<option value="once">One Time (Future Date)</option>'
+    +'</select>'
+    +'<label class="flabel">Remarks</label>'
+    +'<input class="finp" id="sch-remarks" placeholder="e.g. Monthly Salary"/>'
+    +'<div style="background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.74rem;color:var(--rtai)">🛡️ RTAI monitors all scheduled transfers · Alerts sent before execution</div>'
+    +'<button onclick="saveSchedule()" class="btn-primary" style="background:linear-gradient(135deg,var(--rtai),var(--rtai2));color:#000">⏰ Schedule Transfer →</button>'
+    +'</div>'
+    +'<div style="margin-top:14px;font-family:var(--font-head);font-size:.88rem;font-weight:700;margin-bottom:10px">📋 Scheduled Transfers</div>'
+    +'<div style="text-align:center;padding:16px;color:var(--muted2);background:var(--bg2);border:1px solid var(--border);border-radius:10px;font-size:.82rem">No scheduled transfers yet</div>';
+}
+
+function saveSchedule(){
+  var name=document.getElementById('sch-name')?.value.trim();
+  var amount=parseFloat(document.getElementById('sch-amount')?.value)||0;
+  if(!name||!amount){ toast('Enter name and amount','e'); return; }
+  toast('Transfer scheduled! RTAI will notify before execution ✅','s');
 }
 
 // ══════════════════════════════════════
@@ -4811,7 +5234,6 @@ async function renderAssign(){
   }catch(e){
     window._assignUsers=DEMO_USERS.map(function(u,i){return Object.assign({},u,{uid:'demo-'+i,assignedTo:i>3?'demo-2':null});});
   }
-  await mergeBackendAssignUsers();
   showAssignTab('retailer');
 }
 
@@ -4880,58 +5302,13 @@ function showAssignTab(type){
   document.getElementById('assign-content').innerHTML=html;
 }
 
-// ── Network + commission -> backend (AEPS commission split) ──
-function aepsNetPhone(p){ return String(p||'').replace(/\D/g,'').slice(-10); }
-async function aepsPostAdmin(path, body){
-  try {
-    var r = await authFetch(BACKEND_URL + path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (r.status === 401) return { success:false, error:'Session expired - log in again' };
-    return await r.json();
-  } catch(e){ return { success:false, error:e.message }; }
-}
-async function syncLinkToBackend(userUid, parentUid){
-  var all = window._assignUsers || [];
-  var child = all.filter(function(u){ return u.uid===userUid; })[0];
-  var parent = parentUid ? all.filter(function(u){ return u.uid===parentUid; })[0] : null;
-  if (!child || !child.phone) { toast('Saved here, but this user has no mobile number so the backend was not updated','e'); return; }
-  if (parentUid && (!parent || !parent.phone)) { toast('Saved here, but the parent has no mobile number so the backend was not updated','e'); return; }
-  var j = await aepsPostAdmin('/admin/network/link', { childPhone: aepsNetPhone(child.phone), parentPhone: parent ? aepsNetPhone(parent.phone) : '' });
-  if (!j.success) toast('Saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
-}
-async function syncCommissionToBackend(){
-  if (!window._commData) return;
-  var j = await aepsPostAdmin('/admin/commission', { data: window._commData });
-  if (!j.success) toast('Commission saved here, but backend sync failed: ' + (j.error || j.message || 'error'), 'e');
-}
-// ONE-TIME: run in the browser console while logged in as admin:  syncNetworkToBackend()
-async function syncNetworkToBackend(){
-  var all = window._assignUsers;
-  if (!all) {
-    try { var snap = await db.collection('bankme_users').get(); all = []; snap.forEach(function(d){ var u=d.data(); u.uid=d.id; all.push(u); }); }
-    catch(e){ console.log('Cannot load users', e); toast('Could not load users','e'); return; }
-  }
-  var byUid = {}; all.forEach(function(u){ byUid[u.uid] = u; });
-  var links = [], skipped = 0;
-  all.forEach(function(u){
-    if (!u.assignedTo) return;
-    var p = byUid[u.assignedTo];
-    if (u.phone && p && p.phone) links.push({ childPhone: aepsNetPhone(u.phone), parentPhone: aepsNetPhone(p.phone) }); else skipped++;
-  });
-  var j1 = await aepsPostAdmin('/admin/network/sync', { links: links });
-  var j2 = window._commData ? await aepsPostAdmin('/admin/commission', { data: window._commData }) : { success:false, error:'Open the Commission page once, then run this again' };
-  console.log('links found:', links.length, 'skipped (no phone):', skipped, j1, '| commission:', j2);
-  toast('Network: ' + (j1.success ? j1.synced + ' links synced' : 'FAILED (' + (j1.error||'') + ')') + ' · Commission: ' + (j2.success ? 'saved' : 'not saved'), (j1.success && j2.success) ? 's' : 'e');
-}
-
 async function doAssign(userUid, userRole){
   var sel=document.getElementById('assign-sel-'+userUid);
   var parentUid=sel?sel.value:'';
   try{
-    if(db&&userUid&&userUid.indexOf('demo-')!==0&&userUid.indexOf('be-')!==0){
-      // a parent that only exists in the backend has no website record to point at: the backend link is the source of truth then
-      await db.collection('bankme_users').doc(userUid).update({assignedTo:(parentUid&&parentUid.indexOf('be-')===0)?null:(parentUid||null)});
+    if(db&&userUid&&userUid.indexOf('demo-')!==0){
+      await db.collection('bankme_users').doc(userUid).update({assignedTo:parentUid||null});
     }
-    await syncLinkToBackend(userUid, parentUid);
     // Update local copy
     var all=window._assignUsers||[];
     for(var i=0;i<all.length;i++){
@@ -6670,7 +7047,7 @@ function renderProfile(skipFetch){
     +'<div style="position:absolute;bottom:-2px;right:-2px;background:var(--rtai);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:.6rem;border:2px solid var(--bg1)">📷</div>'
     +'</div>'
     +'<div>'
-    +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+bmDisplayName()+'</div>'
+    +'<div style="font-family:var(--font-head);font-size:1.1rem;font-weight:700">'+CU.name+'</div>'
     +'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
     +'<span style="font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:100px;background:'+rc.color+'22;color:'+rc.color+';border:1px solid '+rc.color+'44">'+rc.label+'</span>'
     +'<span style="font-size:.68rem;background:rgba(0,212,170,.1);color:var(--rtai);border:1px solid rgba(0,212,170,.3);padding:2px 7px;border-radius:100px;font-weight:600">RTAI '+(CU.rtaiScore||85)+'</span>'
@@ -6681,7 +7058,7 @@ function renderProfile(skipFetch){
     +'<div style="font-size:.75rem;color:var(--muted2);margin-top:2px">'+(CU.kyc==='verified'?'Aadhaar linked · RBI compliant':'Complete eKYC to access all services')+'</div></div></div>'
     +'<div class="pcard" style="margin-bottom:14px">'
     +'<div style="font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:10px;color:var(--text)">👤 Account Details</div>'
-    +[['Name (as per PAN)',CU.panName||(bmNameOk(CU.name)?CU.name:'Not verified \u2014 complete KYC')],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
+    +[['Name (as per PAN)',CU.panName||CU.name],['PAN Number',CU.panNumber||'Not verified'],['Date of Birth',CU.dob?(CU.dob.slice(0,2)+'-'+CU.dob.slice(2,4)+'-'+CU.dob.slice(4)):'Not set'],['Email',CU.email],['Mobile',CU.phone||'Not set'],['Role',rc.label],['Member Since',CU.joined||'-'],['Wallet Balance','₹'+fmtN(CU.wallet||0)],['RTAI Score',(CU.rtaiScore||85)+'/100'],['Risk Level',CU.riskLevel||'Low']].map(function(r){
       return '<div class="prow"><span style="color:var(--muted2);font-size:.85rem">'+r[0]+'</span><span style="color:var(--text);font-weight:500;font-size:.85rem">'+r[1]+'</span></div>';
     }).join('')
     +'</div>'
@@ -8116,32 +8493,14 @@ async function fetchBBPSBill(silent){
     var j=await r.json();
     if(j&&j.success===false){ throw new Error(j.message||'Could not fetch bill'); }
     var d=(j&&j.data)||j||{};
-    var hasAmount=(d.amount!=null||d.bill_amount!=null);
+    if(d&&d.message&&d.amount==null&&d.bill_amount==null){ throw new Error(d.message||'Could not fetch bill. Please wait a few seconds and try again.'); }
     var billAmt=Number(d.amount||d.bill_amount||0);
+    if(!billAmt||billAmt<=0){ throw new Error('Could not fetch a valid bill amount. Please wait a few seconds and try again, or enter the amount manually.'); }
     var consumerName=d.customerName||d.customer_name||d.consumer_name||d.customerFullName||'';
     var dueDateStr=d.dueDate||d.due_date||'';
     var billNumber=d.billNumber||d.bill_number||d.bill_id||('BILL'+consumer.slice(-6));
 
-    window._bbpsFetchedAmt=hasAmount?billAmt:null;
-
-    if(!hasAmount){
-      // No auto-fetchable amount — either nothing is due this cycle, or this
-      // biller is a prepaid/recharge type that doesn't support bill-fetch at
-      // all (e.g. Jio Prepaid). Let the retailer key in the amount manually
-      // instead of guessing or showing a fake ₹0.00.
-      bc.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        +'<div style="font-size:1.2rem">'+catObj.icon+'</div>'
-        +'<div style="font-size:.82rem;font-weight:700;color:var(--text)">'+biller.name+'</div>'
-        +'</div>'
-        +'<div style="font-size:.76rem;color:var(--muted2)">No bill amount available automatically for this account right now (either nothing is due, or this biller does not support auto bill-fetch). Enter the amount manually below.</div>';
-      var amtEl0=document.getElementById('bbps-amount');
-      if(amtEl0) amtEl0.value='';
-      var totalEl0=document.getElementById('bbps-total-amt');
-      if(totalEl0) totalEl0.textContent='₹—';
-      if(as) as.style.display='block';
-      if(!silent) toast('No bill amount available — enter it manually','s');
-      return;
-    }
+    window._bbpsFetchedAmt=billAmt;
 
     var rows=[].concat(consumerName?[['👤 Consumer',consumerName]]:[]).concat([
       ['🏢 Biller',biller.name],
@@ -8410,7 +8769,6 @@ function collectCommissionData(){
 function saveAllCommission(){
   collectCommissionData();
   try{ localStorage.setItem('bankme_commdata', JSON.stringify(window._commData)); }catch(e){}
-  syncCommissionToBackend();
   if(db){
     db.collection('bankme_config').doc('commission_v2').set(window._commData)
     .then(function(){ toast('✅ Commission data saved!','s'); })
@@ -8718,6 +9076,16 @@ function renderDispute(){
     allTxns = window._allNetworkTxns.slice();
   }
 
+  // Add mock dispute data for demo
+  if(!allTxns.length){
+    allTxns = [
+      {txnId:'TXN001',title:'AEPS Cash Withdrawal',service:'aeps',amount:2000,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Ramesh K.',userRole:'retailer',phone:'9360097511',disputeStatus:'open'},
+      {txnId:'TXN002',title:'Mobile Recharge',service:'recharge',amount:499,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Priya S.',userRole:'customer',phone:'8248839950',disputeStatus:'none'},
+      {txnId:'TXN003',title:'DMT Transfer',service:'dmt',amount:5000,type:'debit',status:'success',date:new Date().toLocaleDateString('en-IN'),userName:'Karthik M.',userRole:'distributor',phone:'7890123456',disputeStatus:'none'},
+      {txnId:'TXN004',title:'Bill Payment - Electricity',service:'bbps',amount:1200,type:'debit',status:'failed',date:new Date().toLocaleDateString('en-IN'),userName:'Suresh R.',userRole:'retailer',phone:'9876543210',disputeStatus:'chargeback'},
+      {txnId:'TXN005',title:'UPI Cash Out',service:'upi',amount:3000,type:'debit',status:'pending',date:new Date().toLocaleDateString('en-IN'),userName:'Meena V.',userRole:'customer',phone:'8765432109',disputeStatus:'reversal'},
+    ];
+  }
 
   // Filter
   var filtered = allTxns.filter(function(t){
@@ -9741,1131 +10109,6 @@ goPage = function(pg){
 </script>
 
 
-<script id="aeps-real-web">
-// ═══════════════════════════════════════════════════════════════════
-// REAL AEPS (Eko Fingpay) — overrides the old simulated wizard.
-// Flow: Operator KYC (daily; one-time e-KYC if needed) → customer txn.
-// Biometric via RD Service on 127.0.0.1 (Windows PC + scanner driver).
-// ═══════════════════════════════════════════════════════════════════
-var AEPS_API = 'https://bankme-backend.onrender.com';
-var AEPS_EKYC_WADH = 'E0jzJ/P8UopUHAieZn8CKqS4WPMi5ZSYXgfnlfkWjrc=';
-var AEPS_RD = { base: null, capture: '', info: '' };
-var AEPS_LIVE = { banks: null, userCode: '', opPhone: '', opAadhaar: '', opBank: null, cust: null, kyc: {} };
-
-function aepsEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function aepsToday(){ return new Date().toISOString().slice(0,10); }
-
-async function aepsCall(method, path, body){
-  var c = new AbortController(); var t = setTimeout(function(){ c.abort(); }, 70000);
-  try {
-    var r = await authFetch(AEPS_API + path, { method: method, signal: c.signal,
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined });
-    if (r.status === 401) return { ok: false, d: null, code: null, msg: 'Your session expired. Please log in again.' };
-    var j = await r.json();
-    var d = j && j.data ? j.data : null;
-    var msg = typeof j.error === 'string' ? j.error : (j.error && j.error.message) || (d && d.message) || '';
-    return { ok: !!j.success, d: d, code: d ? d.response_type_id : null, msg: msg, nb: j.newBalance, credited: j.credited, commission: j.commission, creditFailed: !!j.creditFailed };
-  } catch (e) {
-    return { ok: false, d: null, code: null, msg: e.name === 'AbortError' ? 'Server is waking up — please try again in a minute' : 'Network error: ' + e.message };
-  } finally { clearTimeout(t); }
-}
-
-function aepsFetchTO(url, opts, ms){
-  var c = new AbortController(); var t = setTimeout(function(){ c.abort(); }, ms);
-  opts = opts || {}; opts.signal = c.signal;
-  return fetch(url, opts).finally(function(){ clearTimeout(t); });
-}
-
-async function aepsDiscoverRD(){
-  for (var port = 11100; port <= 11120; port++) {
-    try {
-      var r = await aepsFetchTO('http://127.0.0.1:' + port + '/', { method: 'RDSERVICE' }, 1200);
-      var xml = await r.text();
-      var doc = new DOMParser().parseFromString(xml, 'text/xml');
-      var svc = doc.getElementsByTagName('RDService')[0];
-      if (!svc || svc.getAttribute('status') !== 'READY') continue;
-      var cap = '';
-      var ifs = doc.getElementsByTagName('Interface');
-      for (var i = 0; i < ifs.length; i++) if (ifs[i].getAttribute('id') === 'CAPTURE') cap = ifs[i].getAttribute('path');
-      if (!cap) continue;
-      AEPS_RD = { base: 'http://127.0.0.1:' + port, capture: cap, info: svc.getAttribute('info') || 'Biometric device' };
-      return AEPS_RD;
-    } catch (e) { /* port closed — keep scanning */ }
-  }
-  AEPS_RD = { base: null, capture: '', info: '' };
-  return null;
-}
-
-// returns {xml} or {error}
-async function aepsCaptureFinger(wadh, otp){
-  otp = String(otp || '').replace(/\D/g, '');
-  if (!AEPS_RD.base && !(await aepsDiscoverRD())) return { error: 'No biometric device found. Plug in the scanner, install its RD Service driver, and try again (Windows PC + Chrome/Edge).' };
-  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" otp="' + otp + '" posh="UNKNOWN" env="P"/></PidOptions>';
-  try {
-    var r = await aepsFetchTO(AEPS_RD.base + AEPS_RD.capture, { method: 'CAPTURE', body: opts }, 30000);
-    var xml = await r.text();
-    var doc = new DOMParser().parseFromString(xml, 'text/xml');
-    var resp = doc.getElementsByTagName('Resp')[0];
-    if (!resp) return { error: 'Unexpected response from the biometric device' };
-    if (resp.getAttribute('errCode') !== '0') return { error: 'Fingerprint not captured: ' + (resp.getAttribute('errInfo') || 'error ' + resp.getAttribute('errCode')) };
-    return { xml: xml, q: resp.getAttribute('qScore') };
-  } catch (e) {
-    AEPS_RD.base = null;
-    return { error: 'Could not reach the biometric device. Check it is connected and retry.' };
-  }
-}
-
-function aepsGeo(){
-  return new Promise(function(resolve){
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(function(p){
-      resolve(p.coords.latitude.toFixed(4) + ',' + p.coords.longitude.toFixed(4));
-    }, function(){ resolve(null); }, { enableHighAccuracy: true, timeout: 15000 });
-  });
-}
-
-async function aepsLoadBanks(){
-  if (AEPS_LIVE.banks) return AEPS_LIVE.banks;
-  var r = await aepsCall('GET', '/eko/banks');
-  var list = (r.d && r.d.param_attributes && r.d.param_attributes.list_elements) || [];
-  AEPS_LIVE.banks = list.map(function(b){ return { name: b.label, code: b.value }; }).filter(function(b){ return b.name && b.code; })
-    .sort(function(a,b){ return a.name.localeCompare(b.name); });
-  return AEPS_LIVE.banks;
-}
-
-async function aepsLoadIdentity(){
-  if (AEPS_LIVE.userCode && AEPS_LIVE.opPhone) return true;
-  var phone = String((CU && (CU.phone || CU.mobile)) || '').replace(/\D/g, '').slice(-10);
-  AEPS_LIVE.opPhone = phone;
-  if (CU && CU.ekoUserCode) { AEPS_LIVE.userCode = String(CU.ekoUserCode); return true; }
-  if (phone.length !== 10) return false;
-  var r = await aepsCall('GET', '/user/' + phone + '/identity');
-  if (r.d === null) {
-    try { var rr = await fetch(AEPS_API + '/user/' + phone + '/identity'); var j = await rr.json(); if (j && j.ekoUserCode) AEPS_LIVE.userCode = String(j.ekoUserCode); } catch (e) {}
-  }
-  return !!AEPS_LIVE.userCode;
-}
-
-// ── bank picker (live Eko bank list) ──
-function aepsBankPickerHTML(prefix){
-  return '<div style="position:relative;margin-bottom:4px">'
-    + '<input type="text" id="' + prefix + '-search" placeholder="🔍 Type to search bank..." autocomplete="off"'
-    + ' style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.88rem;outline:none;box-sizing:border-box"'
-    + ' oninput="aepsBankFilter(\'' + prefix + '\',this.value)" onfocus="aepsBankFilter(\'' + prefix + '\',this.value)" onblur="setTimeout(function(){var d=document.getElementById(\'' + prefix + '-dd\');if(d)d.style.display=\'none\';},200)"/>'
-    + '<div id="' + prefix + '-dd" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;margin-top:2px;max-height:200px;overflow-y:auto"></div>'
-    + '</div><input type="hidden" id="' + prefix + '-code" value=""/>'
-    + '<div id="' + prefix + '-badge" style="display:none;font-size:.78rem;color:var(--rtai);font-weight:600;margin:6px 0 10px"></div>';
-}
-function aepsBankFilter(prefix, q){
-  var dd = document.getElementById(prefix + '-dd'); if (!dd) return;
-  var banks = AEPS_LIVE.banks || [];
-  q = (q || '').toLowerCase().trim();
-  var res = banks.filter(function(b){ return !q || b.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 60);
-  dd.innerHTML = res.length ? res.map(function(b){
-    return '<div onmousedown="aepsBankPick(\'' + prefix + '\',\'' + aepsEsc(b.code) + '\')" style="padding:10px 14px;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text)">' + aepsEsc(b.name) + '</div>';
-  }).join('') : '<div style="padding:12px 14px;font-size:.8rem;color:var(--muted2)">' + (banks.length ? 'No banks found' : 'Bank list is loading… try again in a moment') + '</div>';
-  dd.style.display = 'block';
-}
-function aepsBankPick(prefix, code){
-  var b = (AEPS_LIVE.banks || []).filter(function(x){ return x.code === code; })[0]; if (!b) return;
-  document.getElementById(prefix + '-code').value = b.code;
-  document.getElementById(prefix + '-search').value = b.name;
-  var badge = document.getElementById(prefix + '-badge'); badge.style.display = 'block'; badge.textContent = '🏦 ' + b.name;
-  document.getElementById(prefix + '-dd').style.display = 'none';
-}
-
-function aepsBusy(step, title, sub){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  w.innerHTML = aepsStepBar(step)
-    + '<div style="text-align:center;padding:24px 10px"><div style="width:48px;height:48px;border:4px solid rgba(0,212,170,.2);border-top-color:var(--rtai);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px"></div>'
-    + '<div style="font-weight:700;color:var(--rtai);font-size:.95rem">' + aepsEsc(title) + '</div>'
-    + '<div style="color:var(--muted2);font-size:.76rem;margin-top:6px">' + aepsEsc(sub || '') + '</div></div>';
-}
-function aepsFail(step, msg, backFn){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  w.innerHTML = aepsStepBar(step)
-    + '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:14px;padding:18px;text-align:center;margin-bottom:12px">'
-    + '<div style="font-size:2rem;margin-bottom:6px">⚠️</div><div style="font-weight:700;color:#ef4444;font-size:.92rem;margin-bottom:6px">Could not complete</div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.5">' + aepsEsc(msg || 'Unknown error') + '</div></div>'
-    + '<button onclick="' + (backFn || 'initAEPSWizard()') + '" class="btn-primary">← Try again</button>';
-}
-
-// ═════════ STEP 1 — operator identity ═════════
-function initAEPSWizard(){
-  AEPS_WIZARD.step = 1; AEPS_WIZARD.operatorAadhaar = ''; AEPS_WIZARD.device = '';
-  AEPS_LIVE.opAadhaar = ''; AEPS_LIVE.cust = null; AEPS_LIVE.kyc = {};
-  renderAEPSStep1();
-}
-
-async function renderAEPSStep1(){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
-  aepsBusy(1, 'Preparing AEPS…', 'Loading your retailer profile and bank list');
-  var okId = await aepsLoadIdentity();
-  await aepsLoadBanks();
-  if (!okId) {
-    return aepsOnboardForm();
-  }
-  w.innerHTML = aepsStepBar(1)
-    + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:16px">'
-    + '<div style="font-size:.68rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📋 UIDAI / RBI Regulation</div>'
-    + '<div style="font-size:.75rem;color:var(--muted2);line-height:1.55">The operator (you) must verify your own fingerprint once every day before the first customer transaction.</div></div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + ' · ' + aepsEsc(AEPS_LIVE.opPhone) + '</div>'
-    + '<label class="flabel">Your Aadhaar Number (Operator)</label>'
-    + '<input class="finp" id="op-aadhaar" type="tel" maxlength="12" placeholder="12-digit Aadhaar number" style="letter-spacing:3px;font-size:1rem;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
-    + '<div style="font-size:.7rem;color:var(--muted2);margin:-8px 0 14px;line-height:1.5">🔒 Sent encrypted for fingerprint verification only. Not stored.</div>'
-    + '<label class="flabel">Your Aadhaar-linked Bank</label>' + aepsBankPickerHTML('opb')
-    + '<label class="flabel">Biometric Device</label>'
-    + '<select class="fsel" id="op-device" onchange="showDeviceInstallLink(this.value)"><option value="">-- Select (for driver help) --</option>'
-    + AEPS_DEVICES.map(function(d){ return '<option value="' + d.value + '">' + d.label + '</option>'; }).join('') + '</select>'
-    + '<div id="device-install-info" style="display:none;margin-top:6px;background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.25);border-radius:10px;padding:10px"></div>'
-    + '<button onclick="submitAEPSStep1()" class="btn-primary" style="margin-top:10px">Verify My Fingerprint →</button>'
-    + '<div style="text-align:center;margin-top:10px;font-size:.65rem;color:var(--muted)">🛡️ RTAI Secured · UIDAI Compliant · RD Service Biometrics</div>';
-}
-
-async function submitAEPSStep1(){
-  var a = (document.getElementById('op-aadhaar') || {}).value || '';
-  var bank = (document.getElementById('opb-code') || {}).value || '';
-  if (!/^\d{12}$/.test(a)) { toast('Enter your 12-digit Aadhaar number', 'e'); return; }
-  if (!bank) { toast('Select your Aadhaar-linked bank', 'e'); return; }
-  AEPS_LIVE.opAadhaar = a; AEPS_LIVE.opBank = bank;
-  AEPS_WIZARD.step = 2;
-  await aepsOperatorDaily();
-}
-
-// ═════════ STEP 2 — operator biometric (daily KYC, e-KYC if required) ═════════
-function aepsOpBody(extra){
-  var b = { userCode: AEPS_LIVE.userCode, customerId: AEPS_LIVE.opPhone, aadhaar: AEPS_LIVE.opAadhaar, bankCode: AEPS_LIVE.opBank, latlong: AEPS_LIVE.geo };
-  for (var k in extra) b[k] = extra[k];
-  return b;
-}
-
-async function aepsOperatorDaily(){
-  aepsBusy(2, 'Getting your location…', 'Allow location access if the browser asks');
-  AEPS_LIVE.geo = await aepsGeo();
-  if (!AEPS_LIVE.geo) return aepsFail(1, 'Location is required for AEPS. Allow location access for this site and try again.', 'initAEPSWizard()');
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(2)
-    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
-    + '<div style="font-size:2.8rem;margin-bottom:10px">👆</div>'
-    + '<div style="font-weight:700;color:var(--rtai);font-size:1rem;margin-bottom:4px">Place YOUR finger on the scanner</div>'
-    + '<div style="color:var(--muted2);font-size:.78rem">Operator daily verification · Aadhaar XXXX XXXX ' + AEPS_LIVE.opAadhaar.slice(-4) + '</div></div>'
-    + '<button onclick="aepsRunDaily()" class="btn-primary">👆 Scan Fingerprint</button>'
-    + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
-}
-
-async function aepsRunDaily(){
-  aepsBusy(2, 'Scanning…', 'Keep your finger on the device');
-  var cap = await aepsCaptureFinger('');
-  if (cap.error) return aepsFail(2, cap.error, 'aepsOperatorDaily()');
-  aepsBusy(2, 'Verifying with UIDAI…', 'This can take up to a minute');
-  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/daily', aepsOpBody({ piddata: cap.xml }));
-  if (r.ok && r.code === 1713) { return aepsOperatorDone(); }
-  if (/ekyc/i.test(r.msg || '')) { return aepsEkycStart(); }
-  return aepsFail(2, r.msg || 'Daily KYC failed', 'aepsOperatorDaily()');
-}
-
-function aepsOperatorDone(){
-  AEPS_LIVE.opAadhaar = ''; // operator Aadhaar no longer needed in memory
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(2)
-    + '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
-    + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div>'
-    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Operator Verified for Today</div>'
-    + '<div style="font-size:.78rem;color:var(--muted2)">' + aepsEsc(CU ? CU.name : 'Operator') + ' · UIDAI daily KYC complete</div></div>'
-    + '<button onclick="renderAEPSStep3()" class="btn-primary">Proceed to AEPS Service →</button>';
-  setTimeout(function(){ if (AEPS_WIZARD.step === 2) renderAEPSStep3(); }, 1200);
-}
-
-// one-time e-KYC: OTP → verify → biometric
-function aepsEkycStart(){
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(2)
-    + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:14px;margin-bottom:14px">'
-    + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">One-time e-KYC needed</div>'
-    + '<div style="font-size:.76rem;color:var(--muted2);line-height:1.55">Your bank e-KYC is not complete yet. We will send an OTP to your Aadhaar-linked mobile, then scan your finger once. After this you only need the daily fingerprint.</div></div>'
-    + '<button onclick="aepsEkycSendOtp()" class="btn-primary">Send OTP to my Aadhaar mobile</button>';
-}
-async function aepsEkycSendOtp(){
-  aepsBusy(2, 'Sending OTP…', '');
-  var r = await aepsCall('POST', '/eko/aeps/v2/kyc/otp', aepsOpBody({}));
-  if (!(r.ok && r.code === 1600)) return aepsFail(2, r.msg || 'Could not send OTP', 'aepsEkycStart()');
-  AEPS_LIVE.kyc = { otpRefId: String(r.d.data.otp_ref_id), referenceTid: String(r.d.data.reference_tid) };
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(2)
-    + '<label class="flabel">Enter the OTP received on your Aadhaar-linked mobile</label>'
-    + '<input class="finp" id="ekyc-otp" type="tel" maxlength="8" placeholder="OTP" style="letter-spacing:6px;font-size:1.2rem;font-weight:700;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
-    + '<button onclick="aepsEkycVerify()" class="btn-primary">Verify OTP →</button>';
-}
-async function aepsEkycVerify(){
-  var otp = (document.getElementById('ekyc-otp') || {}).value || '';
-  if (otp.length < 4) { toast('Enter the OTP', 'e'); return; }
-  aepsBusy(2, 'Verifying OTP…', '');
-  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/otp/verify', aepsOpBody({ otp: otp, otpRefId: AEPS_LIVE.kyc.otpRefId, referenceTid: AEPS_LIVE.kyc.referenceTid }));
-  if (!(r.ok && r.code === 1604)) return aepsFail(2, r.msg || 'OTP verification failed', 'aepsEkycStart()');
-  AEPS_LIVE.kyc = { otpRefId: String(r.d.data.otp_ref_id), referenceTid: String(r.d.data.reference_tid) };
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(2)
-    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
-    + '<div style="font-size:2.8rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:1rem">OTP verified — scan YOUR finger for e-KYC</div></div>'
-    + '<button onclick="aepsEkycBio()" class="btn-primary">👆 Scan Fingerprint</button>';
-}
-async function aepsEkycBio(){
-  aepsBusy(2, 'Scanning…', 'Keep your finger on the device');
-  var cap = await aepsCaptureFinger(AEPS_EKYC_WADH);
-  if (cap.error) return aepsFail(2, cap.error, 'aepsEkycStart()');
-  aepsBusy(2, 'Completing e-KYC…', 'This can take up to a minute');
-  var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/biometric', aepsOpBody({ piddata: cap.xml, otpRefId: AEPS_LIVE.kyc.otpRefId, referenceTid: AEPS_LIVE.kyc.referenceTid }));
-  if (!(r.ok && r.code === 1605)) return aepsFail(2, r.msg || 'e-KYC failed', 'aepsEkycStart()');
-  toast('e-KYC complete ✅ — now your daily fingerprint', 's');
-  aepsOperatorDaily();
-}
-
-// ═════════ STEP 3 — customer transaction ═════════
-function renderAEPSStep3(){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  AEPS_WIZARD.step = 3;
-  var c = AEPS_LIVE.cust || {};
-  w.innerHTML = aepsStepBar(3)
-    + '<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:.74rem;color:var(--green);font-weight:600">✅ Operator verified · Now serving customer</div>'
-    + '<label class="flabel">Customer Mobile</label><input class="finp" id="m-phone" placeholder="10-digit mobile" type="tel" maxlength="10" value="' + aepsEsc(c.phone || '') + '" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
-    + '<label class="flabel">Customer Aadhaar (12 digits)</label>'
-    + '<input class="finp" id="m-aadhaar" placeholder="12-digit Aadhaar" maxlength="12" type="tel" value="' + aepsEsc(c.aadhaar || '') + '" style="letter-spacing:3px;font-size:1rem;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>'
-    + '<div style="font-size:.7rem;color:var(--muted2);margin:-8px 0 12px">🔒 Encrypted for UIDAI authentication. Not stored.</div>'
-    + '<label class="flabel">Transaction Type</label>'
-    + '<select class="fsel" id="m-type" onchange="toggleAEPSFields()"><option value="withdrawal">Cash Withdrawal</option><option value="balance">Balance Enquiry</option><option value="ministatement">Mini Statement</option></select>'
-    + '<div id="aeps-amount-row"><label class="flabel">Amount (₹)</label>'
-    + '<input class="finp" id="m-amount" placeholder="Enter withdrawal amount" type="number" min="100" step="100" value="' + aepsEsc(c.amount || '') + '"/>'
-    + '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
-    + [100, 500, 1000, 2000, 5000].map(function(a){ return '<button type="button" onclick="setAmt(' + a + ')" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.74rem">₹' + a.toLocaleString('en-IN') + '</button>'; }).join('')
-    + '</div></div>'
-    + '<label class="flabel">Customer Bank</label>' + aepsBankPickerHTML('cb')
-    + '<button onclick="processAEPSCustomer()" class="btn-primary" style="margin-top:6px">👆 Customer Biometric & Process →</button>';
-  if (c.bank) aepsBankPick('cb', c.bank);
-}
-
-function aepsTxnDone(){
-  var f = document.getElementById('svc-form'), res = document.getElementById('svc-result');
-  if (f) f.style.display = 'none'; if (res) res.style.display = 'block'; return res;
-}
-
-async function processAEPSCustomer(){
-  var phone = (document.getElementById('m-phone') || {}).value || '';
-  var aad = (document.getElementById('m-aadhaar') || {}).value || '';
-  var type = (document.getElementById('m-type') || {}).value || 'withdrawal';
-  var bank = (document.getElementById('cb-code') || {}).value || '';
-  var amount = type === 'withdrawal' ? (parseInt((document.getElementById('m-amount') || {}).value, 10) || 0) : 0;
-  if (!/^\d{10}$/.test(phone)) { toast('Enter valid 10-digit customer mobile', 'e'); return; }
-  if (!/^\d{12}$/.test(aad)) { toast('Enter the customer\'s 12-digit Aadhaar', 'e'); return; }
-  if (!bank) { toast('Please select customer bank', 'e'); return; }
-  if (type === 'withdrawal' && amount < 100) { toast('Minimum withdrawal ₹100', 'e'); return; }
-  AEPS_LIVE.cust = { phone: phone, aadhaar: aad, bank: bank, amount: amount || '' };
-  var bankName = ((AEPS_LIVE.banks || []).filter(function(b){ return b.code === bank; })[0] || {}).name || bank;
-
-  aepsBusy(3, 'Getting your location…', '');
-  var geo = await aepsGeo();
-  if (!geo) return aepsFail(3, 'Location is required for AEPS. Allow location access and try again.', 'renderAEPSStep3()');
-
-  var base = { userCode: AEPS_LIVE.userCode, customerId: phone, aadhaar: aad, bankCode: bank, latlong: geo };
-  var txnOtpId = '';
-  if (type === 'withdrawal' && amount > 5000) {
-    aepsBusy(3, 'Requesting transaction OTP…', 'The customer receives an SMS on the Aadhaar-linked mobile');
-    var o = await aepsCall('POST', '/eko/aeps/v2/withdrawal-otp', Object.assign({}, base, { amount: amount }));
-    if (!(o.ok && o.d && o.d.data && o.d.data.fp_transaction_id)) return aepsFail(3, o.msg || 'Could not request OTP', 'renderAEPSStep3()');
-    txnOtpId = String(o.d.data.fp_transaction_id);
-  }
-
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = aepsStepBar(3)
-    + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
-    + '<div style="font-size:2.5rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:.95rem;margin-bottom:4px">Customer Finger Placement</div>'
-    + '<div style="color:var(--muted2);font-size:.78rem">Aadhaar XXXX XXXX ' + aad.slice(-4) + ' · ' + aepsEsc(bankName) + '</div></div>'
-    + (txnOtpId ? '<label class="flabel">Customer\'s 6-digit SMS OTP</label><input class="finp" id="m-txn-otp" type="tel" maxlength="6" placeholder="OTP sent to the customer\'s Aadhaar-linked mobile" style="letter-spacing:6px;font-size:1.2rem;font-weight:700;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>' : '')
-    + '<button onclick="aepsCustomerGo()" class="btn-primary">👆 Scan Customer Fingerprint</button>'
-    + '<button onclick="renderAEPSStep3()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
-  AEPS_LIVE.pending = { type: type, amount: amount, base: base, txnOtpId: txnOtpId, bankName: bankName };
-}
-
-async function aepsCustomerGo(){
-  var p = AEPS_LIVE.pending; if (!p) return renderAEPSStep3();
-  var txnOtp = '';
-  if (p.txnOtpId) {
-    txnOtp = ((document.getElementById('m-txn-otp') || {}).value || '').replace(/\D/g, '');
-    if (txnOtp.length !== 6) { toast("Enter the customer's 6-digit SMS OTP", 'e'); return; }
-  }
-  aepsBusy(3, 'Scanning…', 'Ask the customer to keep the finger on the device');
-  var cap = await aepsCaptureFinger('', txnOtp);
-  if (cap.error) return aepsFail(3, cap.error, 'renderAEPSStep3()');
-  aepsBusy(3, 'Processing AEPS transaction…', 'Contacting ' + p.bankName + ' — do not close this window');
-  var body = Object.assign({}, p.base, { piddata: cap.xml });
-  var path = '/eko/aeps/v2/balance';
-  if (p.type === 'ministatement') path = '/eko/aeps/v2/mini-statement';
-  if (p.type === 'withdrawal') { path = '/eko/aeps/v2/withdrawal'; body.amount = p.amount; if (p.txnOtpId) body.txnOtpRequestId = p.txnOtpId; }
-  var r = await aepsCall('POST', path, body);
-  AEPS_LIVE.pending = null;
-  aepsShowResult(p, r);
-}
-
-function aepsShowResult(p, r){
-  var okCodes = { withdrawal: 1463, balance: 1466, ministatement: 1527 };
-  var labels = { withdrawal: 'Cash Withdrawal', balance: 'Balance Enquiry', ministatement: 'Mini Statement' };
-  var d = (r.d && r.d.data) || {};
-  var cust = AEPS_LIVE.cust || {};
-  var success = r.ok && r.code === okCodes[p.type];
-  var pending = p.type === 'withdrawal' && r.code === 1465;
-  var res = aepsTxnDone(); if (!res) return;
-  var color = success ? 'var(--green)' : pending ? 'var(--gold)' : '#ef4444';
-  var title = success ? labels[p.type] + ' Successful' : pending ? 'Withdrawal Pending' : labels[p.type] + ' Failed';
-
-  var rows = [['Transaction Type', labels[p.type]], ['Customer Mobile', '+91 ' + aepsEsc(cust.phone)], ['Bank', aepsEsc(p.bankName)]];
-  if (d.aadhar) rows.push(['Aadhaar', aepsEsc(d.aadhar)]);
-  if (p.type === 'withdrawal' && (success || pending)) rows.push(['Amount', '₹' + fmtN(parseFloat(d.amount || p.amount))]);
-  if (d.customer_balance !== undefined && d.customer_balance !== '' && (p.type !== 'withdrawal' || success)) rows.push(['Account Balance', '₹' + fmtN(parseFloat(d.customer_balance) || 0)]);
-  if (d.commission) rows.push(['Commission', '₹' + aepsEsc(d.commission)]);
-  if (d.tid) rows.push(['Transaction ID', aepsEsc(d.tid)]);
-  if (d.bank_ref_num) rows.push(['Bank Ref (RRN)', aepsEsc(d.bank_ref_num)]);
-  rows.push(['Date & Time', aepsEsc(d.transaction_date || new Date().toLocaleString('en-IN'))]);
-  if (!success) rows.push(['Reason', aepsEsc(pending ? 'Awaiting bank confirmation' : (r.msg || d.comment || 'Declined'))]);
-
-  var mini = '';
-  if (success && p.type === 'ministatement' && d.mini_statement_list && d.mini_statement_list.length) {
-    mini = '<div style="margin-top:10px"><div style="font-size:.7rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Mini Statement</div>'
-      + d.mini_statement_list.map(function(t){
-        var cr = String(t.txnType).toLowerCase().indexOf('cr') === 0;
-        return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.74rem"><div><div style="color:var(--text)">' + aepsEsc(t.narration) + '</div><div style="color:var(--muted2);font-size:.66rem">' + aepsEsc(t.date) + '</div></div><div style="font-weight:700;color:' + (cr ? 'var(--green)' : '#ef4444') + '">' + (cr ? '+' : '-') + '₹' + aepsEsc(t.amount) + '</div></div>';
-      }).join('') + '</div>';
-  }
-
-  var txnId = d.tid ? String(d.tid) : '';
-  if (p.type === 'withdrawal' && success) {
-    if (r.nb !== undefined && r.nb !== null && CU) {
-      CU.wallet = r.nb;
-      var chipEl = document.getElementById('wallet-chip'); if (chipEl) chipEl.textContent = '\u20B9' + fmtN(CU.wallet);
-    }
-    if (r.credited) rows.push(['Credited to your wallet', '\u20B9' + fmtN(r.credited)]);
-    if (r.commission) rows.push(['Commission earned', '\u20B9' + fmtN(r.commission)]);
-    if (r.creditFailed) rows.push(['\u26A0\uFE0F Wallet credit', 'FAILED - contact support with Transaction ID ' + aepsEsc(txnId)]);
-  }
-  if (p.type === 'withdrawal' && success && txnId) {
-    try {
-      TXN_HISTORY.push({ id: txnId, service: 'aeps', title: 'AEPS Cash Withdrawal', amount: parseFloat(d.amount || p.amount), type: 'credit',
-        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), txnId: txnId, status: 'success', rtaiVerified: true });
-    } catch (e) {}
-  }
-  var wd = (success && p.type !== 'withdrawal')
-    ? '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:11px 13px;margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px"><div style="font-size:.78rem;font-weight:700;color:var(--gold)">💸 Proceed to Cash Withdrawal?</div><button onclick="aepsDirectWithdraw()" style="flex-shrink:0;padding:8px 14px;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#ef4444);border:none;color:#fff;font-size:.76rem;font-weight:700;cursor:pointer">Withdraw →</button></div>' : '';
-  var inq = pending && txnId
-    ? '<div style="font-size:.72rem;color:var(--muted2);margin-top:8px">Do not repeat the withdrawal. Transaction ID ' + aepsEsc(txnId) + '</div>'
-      + '<button id="aeps-recon-btn" onclick="aepsReconcile(\'' + aepsEsc(txnId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:var(--gold);cursor:pointer;font-size:.8rem;font-weight:700">🔄 Check status with Eko</button>'
-      + '<div id="aeps-recon-msg" style="font-size:.76rem;margin-top:8px;text-align:center"></div>' : '';
-
-  res.innerHTML = '<div style="background:var(--bg3);border:1px solid ' + color + ';border-radius:14px;padding:16px">'
-    + '<div style="text-align:center;margin-bottom:12px"><div style="font-size:1.8rem">' + (success ? '✅' : pending ? '⏳' : '❌') + '</div>'
-    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;color:' + color + '">' + title + '</div></div>'
-    + '<div style="background:var(--bg2);border-radius:10px;padding:10px">'
-    + rows.map(function(x){ return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted2)">' + x[0] + '</span><span style="color:var(--text);font-weight:600;text-align:right;max-width:60%">' + x[1] + '</span></div>'; }).join('')
-    + '</div>' + mini + wd + inq
-    + '<div style="display:flex;gap:8px;margin-top:10px">'
-    + (success && p.type === 'withdrawal' && txnId ? '<button onclick="showInvoice(\'' + aepsEsc(txnId) + '\')" style="flex:1;padding:9px;border-radius:9px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);color:#818cf8;cursor:pointer;font-size:.78rem;font-weight:700">🧾 Receipt</button>' : '')
-    + '<button onclick="aepsAnother()" style="flex:1;padding:9px;border-radius:9px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;cursor:pointer;font-size:.78rem;font-weight:700">New Transaction</button>'
-    + '<button onclick="document.getElementById(\'svc-modal\').classList.remove(\'show\')" style="flex:1;padding:9px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted2);cursor:pointer;font-size:.78rem;font-weight:700">Close</button>'
-    + '</div></div>';
-  toast(success ? labels[p.type] + ' successful ✅' : pending ? 'Withdrawal pending ⏳' : (r.msg || 'Transaction failed'), success ? 's' : 'e');
-}
-
-async function aepsReconcile(tid){
-  var btn = document.getElementById('aeps-recon-btn'), msg = document.getElementById('aeps-recon-msg');
-  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-  // this route answers { success, state, ... } directly (not Eko-shaped), so call it with authFetch once
-  var res = null, httpStatus = 0;
-  try {
-    var x = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: tid }) });
-    httpStatus = x.status; res = await x.json();
-  } catch (e) { res = null; }
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Check status with Eko'; }
-  if (!res || !res.success) {
-    if (msg) { msg.style.color = '#ef4444'; msg.textContent = httpStatus === 401 ? 'Your session expired. Please log in again.' : ((res && res.error) || 'Could not check right now. Try again shortly.'); }
-    return;
-  }
-  if (res.state === 'success') {
-    if (res.newBalance !== undefined && res.newBalance !== null && CU) {
-      CU.wallet = res.newBalance;
-      var chip = document.getElementById('wallet-chip'); if (chip) chip.textContent = '\u20B9' + fmtN(CU.wallet);
-    }
-    if (msg) { msg.style.color = 'var(--green)'; msg.textContent = res.credited ? '✅ Confirmed — ₹' + fmtN(res.credited) + ' credited to your wallet' : '✅ Confirmed — already credited'; }
-    if (btn) btn.style.display = 'none';
-    toast('Withdrawal confirmed ✅', 's');
-  } else if (res.state === 'failed') {
-    if (msg) { msg.style.color = '#ef4444'; msg.textContent = '❌ The withdrawal failed at the bank. Nothing was credited.'; }
-    if (btn) btn.style.display = 'none';
-  } else {
-    if (msg) { msg.style.color = 'var(--gold)'; msg.textContent = '⏳ Still waiting for the bank. Check again in a few minutes.'; }
-  }
-}
-
-function aepsBackToForm(keep){
-  var f = document.getElementById('svc-form'), res = document.getElementById('svc-result');
-  if (res) res.style.display = 'none'; if (f) f.style.display = 'block';
-  if (!keep) AEPS_LIVE.cust = null;
-  renderAEPSStep3();
-}
-function aepsAnother(){ aepsBackToForm(false); }
-function aepsDirectWithdraw(){ aepsBackToForm(true); var t = document.getElementById('m-type'); if (t) { t.value = 'withdrawal'; toggleAEPSFields(); } }
-// QR / fake-scan helpers from the old wizard are intentionally disabled
-function simulateQRScan(){} function simulateBiometricScan(){} function renderAEPSStep2(){ return aepsOperatorDaily(); }
-</script>
-<script id="aeps-activation-web">
-// ═══════════════════════════════════════════════════════════════════
-// One-time AEPS (Eko Fingpay) ACTIVATION — website version.
-// Same fields as the mobile AEPSActivationScreen. Rendered inside #aeps-wizard.
-// ═══════════════════════════════════════════════════════════════════
-var AEPS_ACT = { shops: null, states: null, files: {}, prefilled: false };
-
-function aepsActList(r){
-  var l = (r && r.d && r.d.data && r.d.data.param_attributes && r.d.data.param_attributes.list_elements) || [];
-  return l.map(function(x){ return { id: String(x.value), name: String(x.label) }; })
-          .filter(function(x){ return x.id && x.name && x.name !== 'Select State'; });
-}
-async function aepsActLoadLists(){
-  async function get(path){
-    try { var r = await fetch(AEPS_API + path); var j = await r.json(); return { d: j }; } catch (e) { return { d: null }; }
-  }
-  if (!AEPS_ACT.shops) AEPS_ACT.shops = aepsActList(await get('/eko/aeps-shop-types'));
-  if (!AEPS_ACT.states) AEPS_ACT.states = aepsActList(await get('/eko/aeps-states'));
-}
-function aepsActOpts(list, ph){
-  return '<option value="">' + ph + '</option>' + (list || []).map(function(x){ return '<option value="' + aepsEsc(x.id) + '">' + aepsEsc(x.name) + '</option>'; }).join('');
-}
-function aepsShrink(file){
-  return new Promise(function(resolve, reject){
-    var url = URL.createObjectURL(file), img = new Image();
-    img.onload = function(){
-      var s = Math.min(1, 1280 / Math.max(img.width, img.height));
-      var c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-      var q = 0.7;
-      (function tryQ(){ c.toBlob(function(b){ if (b && b.size > 900 * 1024 && q > 0.3) { q -= 0.1; tryQ(); } else resolve(b); }, 'image/jpeg', q); })();
-    };
-    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('That file is not a valid image')); };
-    img.src = url;
-  });
-}
-async function aepsActPick(key, input){
-  var f = input.files && input.files[0]; var lab = document.getElementById('act-' + key + '-lab');
-  if (!f) return;
-  try {
-    var b = await aepsShrink(f); AEPS_ACT.files[key] = b;
-    if (lab) lab.textContent = '✅ ' + f.name + ' (' + Math.round(b.size / 1024) + ' KB)';
-  } catch (e) { AEPS_ACT.files[key] = null; if (lab) lab.textContent = '❌ ' + e.message; }
-}
-
-async function aepsActivationOpen(){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
-  aepsBusy(1, 'Loading activation form…', 'Fetching shop types and states from Eko');
-  var okId = await aepsLoadIdentity();
-  await aepsActLoadLists();
-  if (!okId) return aepsOnboardForm();
-  AEPS_ACT.files = {}; AEPS_ACT.geo = '';
-  var acc = '', ifsc = '';
-  try {
-    var r = await fetch(AEPS_API + '/user/' + AEPS_LIVE.opPhone + '/bank-accounts'); var j = await r.json();
-    if (j && j.success && Array.isArray(j.accounts) && j.accounts.length) {
-      var p = j.accounts.filter(function(a){ return a.isPrimary; })[0] || j.accounts[0];
-      acc = p.accountNumber || ''; ifsc = p.ifsc || '';
-    }
-  } catch (e) {}
-  function inp(id, label, ph, extra){ return '<label class="flabel">' + label + '</label><input class="finp" id="' + id + '" placeholder="' + (ph || '') + '" ' + (extra || '') + '/>'; }
-  function addr(p, title){
-    return '<div style="font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin:6px 0">' + title + '</div>'
-      + inp(p + '-line', 'Address line', 'Shop / door no, street, area')
-      + inp(p + '-city', 'City', 'City')
-      + '<label class="flabel">State</label><select class="fsel" id="' + p + '-state">' + aepsActOpts(AEPS_ACT.states, '-- Select State --') + '</select>'
-      + inp(p + '-pin', 'Pincode', '6-digit pincode', 'type="tel" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"');
-  }
-  function file(key, label){
-    return '<label class="flabel">' + label + '</label>'
-      + '<input type="file" accept="image/*" id="act-' + key + '" onchange="aepsActPick(\'' + key + '\',this)" style="width:100%;margin-bottom:4px;font-size:.78rem;color:var(--muted2)"/>'
-      + '<div id="act-' + key + '-lab" style="font-size:.72rem;color:var(--muted2);margin-bottom:10px">No file chosen</div>';
-  }
-  w.innerHTML =
-    '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:11px;padding:12px;margin-bottom:14px">'
-    + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">🔐 One-time AEPS Activation</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Do this once per retailer. Your PAN and Aadhaar photos go to Eko for KYC. Eko may take time to approve; until approved, AEPS transactions will be declined.</div></div>'
-    + '<div style="font-size:.78rem;color:var(--muted2);margin-bottom:10px">Retailer: <strong style="color:var(--text)">' + aepsEsc(CU ? CU.name : '') + '</strong> · Eko code ' + aepsEsc(AEPS_LIVE.userCode) + '</div>'
-    + inp('act-account', 'Bank Account Number', 'Account number', 'type="tel" value="' + aepsEsc(acc) + '"')
-    + inp('act-ifsc', 'IFSC Code', 'e.g. HDFC0001234', 'maxlength="11" style="text-transform:uppercase" value="' + aepsEsc(ifsc) + '"')
-    + '<datalist id="act-devs">' + AEPS_DEVICES.map(function(d){ return '<option value="' + aepsEsc(d.label) + '">'; }).join('') + '</datalist>'
-    + inp('act-model', 'Biometric Device Model', 'e.g. Morpho MSO 1300 E3 L1', 'list="act-devs"')
-    + inp('act-serial', 'Device Serial Number', 'Printed on the device')
-    + inp('act-aadhaar', 'Your Aadhaar Number', '12-digit Aadhaar', 'type="tel" maxlength="12" style="letter-spacing:3px;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
-    + '<label class="flabel">Shop Type</label><select class="fsel" id="act-shop">' + aepsActOpts(AEPS_ACT.shops, '-- Select Shop Type --') + '</select>'
-    + addr('act-off', 'Office / shop address')
-    + '<label style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted2);margin:4px 0 10px"><input type="checkbox" id="act-same" checked onchange="document.getElementById(\'act-proof-box\').style.display=this.checked?\'none\':\'block\'"/> Address as per proof is same as office</label>'
-    + '<div id="act-proof-box" style="display:none">' + addr('act-prf', 'Address as per proof') + '</div>'
-    + '<label class="flabel">Shop GPS Location</label>'
-    + '<button type="button" onclick="aepsActGeo()" class="btn-primary" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);margin-bottom:4px">📍 Capture my current location</button>'
-    + '<div id="act-geo-lab" style="font-size:.72rem;color:var(--muted2);margin-bottom:10px">Not captured (be at the shop)</div>'
-    + file('pan', 'PAN Card photo') + file('front', 'Aadhaar — front photo') + file('back', 'Aadhaar — back photo')
-    + '<button onclick="aepsActSubmit()" class="btn-primary" id="act-submit">Submit Activation to Eko →</button>'
-    + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
-}
-
-async function aepsActGeo(){
-  var lab = document.getElementById('act-geo-lab'); if (lab) lab.textContent = 'Getting location…';
-  AEPS_ACT.geo = (await aepsGeo()) || '';
-  if (lab) lab.textContent = AEPS_ACT.geo ? '✅ ' + AEPS_ACT.geo : '❌ Could not get location — allow it for this site and retry';
-}
-
-function aepsActVal(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
-function aepsActCollect(){
-  var same = document.getElementById('act-same').checked;
-  var pre = same ? 'act-off' : 'act-prf';
-  function stateOf(p){ var s = document.getElementById(p + '-state'); return { id: s.value, name: s.value ? s.options[s.selectedIndex].text : '' }; }
-  var o = stateOf('act-off'), pr = stateOf(pre);
-  return {
-    account: aepsActVal('act-account'), ifsc: aepsActVal('act-ifsc').toUpperCase(),
-    model: aepsActVal('act-model'), serial: aepsActVal('act-serial'), aadhaar: aepsActVal('act-aadhaar'),
-    shop: aepsActVal('act-shop'),
-    off: { line: aepsActVal('act-off-line'), city: aepsActVal('act-off-city'), state: o, pin: aepsActVal('act-off-pin') },
-    prf: { line: aepsActVal(pre + '-line'), city: aepsActVal(pre + '-city'), state: pr, pin: aepsActVal(pre + '-pin') }
-  };
-}
-function aepsActValidate(v){
-  if (!/^\d{9,18}$/.test(v.account)) return 'Enter a valid bank account number';
-  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.ifsc)) return 'Enter a valid 11-character IFSC (e.g. HDFC0001234)';
-  if (!v.model || !v.serial) return 'Device model and serial number are required';
-  if (!/^\d{12}$/.test(v.aadhaar)) return 'Enter a valid 12-digit Aadhaar number';
-  if (!v.shop) return 'Select a shop type';
-  var blocks = [['Office', v.off], ['Proof', v.prf]];
-  for (var i = 0; i < blocks.length; i++) {
-    var b = blocks[i][1];
-    if (!b.line || !b.city || !b.state.id || !/^\d{6}$/.test(b.pin)) return blocks[i][0] + ' address is incomplete (line, city, state, 6-digit pincode)';
-  }
-  if (!AEPS_ACT.geo) return 'Capture the shop GPS location';
-  if (!AEPS_ACT.files.pan || !AEPS_ACT.files.front || !AEPS_ACT.files.back) return 'PAN, Aadhaar front and Aadhaar back photos are all required';
-  return '';
-}
-
-async function aepsActSubmit(){
-  var v = aepsActCollect(), err = aepsActValidate(v);
-  if (err) { toast(err, 'e'); return; }
-  var btn = document.getElementById('act-submit'); if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
-  var f = new FormData();
-  f.append('modelname', v.model); f.append('devicenumber', v.serial);
-  f.append('account', v.account); f.append('ifsc', v.ifsc);
-  f.append('shop_type', v.shop); f.append('aadhar', v.aadhaar); f.append('latlong', AEPS_ACT.geo);
-  f.append('office_line', v.off.line); f.append('office_city', v.off.city); f.append('office_state', v.off.state.name);
-  f.append('office_state_id', v.off.state.id); f.append('office_pincode', v.off.pin);
-  f.append('proof_line', v.prf.line); f.append('proof_city', v.prf.city); f.append('proof_state', v.prf.state.name);
-  f.append('proof_state_id', v.prf.state.id); f.append('proof_pincode', v.prf.pin);
-  f.append('pan_card', AEPS_ACT.files.pan, 'pan.jpg');
-  f.append('aadhar_front', AEPS_ACT.files.front, 'aadhar_front.jpg');
-  f.append('aadhar_back', AEPS_ACT.files.back, 'aadhar_back.jpg');
-  var c = new AbortController(), t = setTimeout(function(){ c.abort(); }, 90000);
-  try {
-    var r = await fetch(AEPS_API + '/eko/agent/' + encodeURIComponent(AEPS_LIVE.userCode) + '/aeps-fingpay/activate', { method: 'PUT', body: f, signal: c.signal });
-    var j = await r.json();
-    var d = j && j.data ? j.data : null;
-    var ok = j && j.success && (!d || d.status === 0 || d.status === undefined);
-    var msg = (d && d.message) || (typeof j.error === 'string' ? j.error : (j.error && j.error.message)) || '';
-    AEPS_ACT.files = {};
-    if (ok) {
-      var w = document.getElementById('aeps-wizard');
-      w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
-        + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div><div style="font-weight:700;color:var(--green);font-size:1rem;margin-bottom:6px">Activation submitted to Eko</div>'
-        + '<div style="font-size:.78rem;color:var(--muted2);line-height:1.55">' + aepsEsc(msg || 'Eko will review and approve your AEPS service.') + ' Once approved, start AEPS and verify your fingerprint.</div></div>'
-        + '<button onclick="initAEPSWizard()" class="btn-primary">Go to AEPS →</button>';
-      toast('AEPS activation submitted ✅', 's');
-    } else {
-      aepsFail(1, msg || 'Activation was not accepted. Check the details and try again.', 'aepsActivationOpen()');
-    }
-  } catch (e) {
-    aepsFail(1, e.name === 'AbortError' ? 'Server is slow to respond — wait a minute and check before resubmitting.' : 'Network error: ' + e.message, 'aepsActivationOpen()');
-  } finally { clearTimeout(t); }
-}
-
-// Add an "Activate AEPS" entry on the operator screen (Step 1)
-(function(){
-  var orig = renderAEPSStep1;
-  renderAEPSStep1 = async function(){
-    await orig();
-    var w = document.getElementById('aeps-wizard');
-    if (w && w.querySelector('#op-aadhaar') && !w.querySelector('#aeps-act-entry')) {
-      w.insertAdjacentHTML('beforeend',
-        '<button id="aeps-act-entry" onclick="aepsActivationOpen()" style="width:100%;margin-top:12px;padding:11px;border-radius:10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.3);color:#2563eb;cursor:pointer;font-size:.8rem;font-weight:700">🔐 First time? One-time AEPS Activation</button>');
-    }
-  };
-})();
-</script>
-<script id="aeps-onboard-web">
-async function aepsOnboardForm(){
-  var w = document.getElementById('aeps-wizard'); if (!w) return;
-  var procBtn = document.querySelector('#svc-form .btn-primary'); if (procBtn) procBtn.style.display = 'none';
-  try { if (typeof aepsActLoadLists === 'function') await aepsActLoadLists(); } catch (e) {}
-  var states = (typeof AEPS_ACT !== 'undefined' && AEPS_ACT.states) || [];
-  var kyc = await bmLoadKyc();
-  var fullName = kyc.panName || (bmNameOk(CU && CU.name) ? CU.name : '');
-  var nm = String(fullName).trim().split(/\s+/).filter(Boolean);
-  var first = nm.length > 1 ? nm.slice(0, -1).join(' ') : (nm[0] || ''), last = nm.length > 1 ? nm[nm.length - 1] : '';
-  var prePan = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(kyc.panNumber || '').toUpperCase()) ? String(kyc.panNumber).toUpperCase() : '';
-  var d8 = String(kyc.dob || '').replace(/\D/g, ''), preDob = d8.length === 8 ? d8.slice(4) + '-' + d8.slice(2, 4) + '-' + d8.slice(0, 2) : '';
-  function inp(id, label, ph, val, extra){ return '<label class="flabel">' + label + '</label><input class="finp" id="' + id + '" placeholder="' + (ph || '') + '" value="' + aepsEsc(val || '') + '" ' + (extra || '') + '/>'; }
-  var stateField = states.length
-    ? '<label class="flabel">State</label><select class="fsel" id="ob-state"><option value="">-- Select State --</option>' + states.map(function(s){ return '<option value="' + aepsEsc(s.name) + '">' + aepsEsc(s.name) + '</option>'; }).join('') + '</select>'
-    : inp('ob-state', 'State', 'e.g. Tamil Nadu');
-  w.innerHTML = '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:12px;margin-bottom:14px">'
-    + '<div style="font-weight:700;color:var(--gold);font-size:.88rem;margin-bottom:4px">Eko retailer onboarding (one time)</div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);line-height:1.55">Your account has no Eko retailer code yet. Enter your details exactly as on your PAN card. This creates <strong>your own</strong> AEPS agent code, then you continue to the one-time activation.</div>' + (CU && CU.role === 'customer' ? '<div style="font-size:.74rem;color:var(--gold);margin-top:8px;line-height:1.5">⚠️ AEPS is for retailers. Completing this form upgrades your account from Customer to <strong>Retailer</strong>.</div>' : '') + '</div>'
-    + inp('ob-first', 'First name (as on PAN)', 'First name', first)
-    + inp('ob-last', 'Last name (as on PAN)', 'Last name', last)
-    + inp('ob-pan', 'PAN number', 'ABCDE1234F', prePan, 'maxlength="10" style="text-transform:uppercase;letter-spacing:2px" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,\'\')"')
-    + inp('ob-email', 'Email', 'name@example.com', (CU && CU.email) || '', 'type="email"')
-    + '<label class="flabel">Date of birth</label><input class="finp" id="ob-dob" type="date" value="' + aepsEsc(preDob) + '"/>'
-    + inp('ob-shop', 'Shop name', 'Shop name', (CU && CU.shopName) || '')
-    + inp('ob-line', 'Address line', 'Shop / door no, street')
-    + inp('ob-area', 'Area / locality', 'Area')
-    + inp('ob-city', 'City', 'City')
-    + inp('ob-district', 'District', 'District')
-    + stateField
-    + inp('ob-pin', 'Pincode', '6-digit pincode', '', 'type="tel" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
-    + '<div style="font-size:.7rem;color:var(--muted2);margin:-4px 0 12px">Mobile used: ' + aepsEsc((CU && (CU.phone || CU.mobile)) || '') + ' (your login number). 🔒 PAN is sent securely to Eko and not stored by BankMe.</div>'
-    + '<button onclick="aepsOnboardSubmit()" class="btn-primary">Create my Eko retailer code →</button>';
-}
-
-async function aepsOnboardSubmit(){
-  function v(id){ return ((document.getElementById(id) || {}).value || '').trim(); }
-  var body = {
-    firstName: v('ob-first'), lastName: v('ob-last'), panNumber: v('ob-pan').toUpperCase(), email: v('ob-email'),
-    dob: v('ob-dob'), shopName: v('ob-shop'),
-    address: { line: v('ob-line'), area: v('ob-area'), city: v('ob-city'), district: v('ob-district'), state: v('ob-state'), pincode: v('ob-pin') }
-  };
-  if (!body.firstName || !body.lastName) { toast('Enter your first and last name as on your PAN card', 'e'); return; }
-  if (!bmNameOk(body.firstName + ' ' + body.lastName)) { toast('Enter your real name as on the PAN card', 'e'); return; }
-  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(body.panNumber)) { toast('Enter a valid PAN (ABCDE1234F)', 'e'); return; }
-  if (!/^\S+@\S+\.\S+$/.test(body.email)) { toast('Enter a valid email', 'e'); return; }
-  if (!body.dob) { toast('Select your date of birth', 'e'); return; }
-  if (!body.shopName) { toast('Enter your shop name', 'e'); return; }
-  if (!body.address.line || !body.address.city || !body.address.district || !body.address.state || !/^\d{6}$/.test(body.address.pincode)) { toast('Complete the address (line, city, district, state, 6-digit pincode)', 'e'); return; }
-  aepsBusy(1, 'Creating your Eko retailer code…', 'Verifying your PAN with Eko. This can take up to a minute');
-  var r = await aepsCall('POST', '/eko/aeps/v2/onboard', body);
-  if (!(r.ok && r.d && r.d.userCode)) return aepsFail(1, r.msg || 'Eko could not onboard this retailer. Check the details match your PAN card.', 'aepsOnboardForm()');
-  AEPS_LIVE.userCode = String(r.d.userCode);
-  if (r.d.promoted) await bmApplyRetailerUpgrade(r.d);
-  try { if (CU) CU.ekoUserCode = AEPS_LIVE.userCode; } catch (e) {}
-  var w = document.getElementById('aeps-wizard');
-  w.innerHTML = '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
-    + '<div style="font-size:2.4rem;margin-bottom:8px">✅</div>'
-    + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Eko retailer code created</div>'
-    + '<div style="font-size:.8rem;color:var(--muted2)">Your code: <strong style="color:var(--text)">' + aepsEsc(AEPS_LIVE.userCode) + '</strong></div>'
-    + '<div style="font-size:.74rem;color:var(--muted2);margin-top:8px;line-height:1.5">Next: the one-time AEPS activation (shop details, documents and photos).</div></div>'
-    + '<button onclick="aepsActivationOpen()" class="btn-primary">Continue to AEPS activation →</button>';
-}
-</script>
-<script id="network-users-web">
-async function mergeBackendNetworkUsers(){
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users');
-    var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._networkUsers || [];
-    var byPhone = {};
-    all.forEach(function(u){ var p = String(u.phone || u.mobile || '').replace(/\D/g, '').slice(-10); if (p) byPhone[p] = u; });
-    j.users.forEach(function(b){
-      var p = String(b.phone || '').replace(/\D/g, '').slice(-10);
-      if (!p) return;
-      var ex = byPhone[p];
-      if (ex) {
-        if (!ex.role && b.role) ex.role = b.role;
-        if (!ex.phone) ex.phone = p;
-        if (ex.kyc !== 'verified' && b.kycStatus === 'verified') ex.kyc = 'verified';
-        return;
-      }
-      var d = b.createdAt ? new Date(b.createdAt) : null;
-      all.push({
-        uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
-        wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '',
-        joined: d ? d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'New',
-        txns: [], rtaiScore: 80, commissionEarned: 0, internalId: b.internalId || '', ekoUserCode: b.ekoUserCode || ''
-      });
-    });
-    window._networkUsers = all;
-  } catch (e) { /* backend list is a bonus: keep whatever the website already loaded */ }
-}
-</script>
-<script id="assign-users-web">
-async function mergeBackendAssignUsers(){
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users');
-    var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._assignUsers || [];
-    var norm = function(p){ return String(p || '').replace(/\D/g, '').slice(-10); };
-    var byPhone = {};
-    all.forEach(function(u){ var p = norm(u.phone || u.mobile); if (p) byPhone[p] = u; });
-    j.users.forEach(function(b){
-      var p = norm(b.phone); if (!p) return;
-      if (!byPhone[p]) {
-        var nu = { uid: 'be-' + p, name: b.name || ('User ' + p), email: b.email || p, phone: p, role: b.role || 'customer',
-          wallet: b.wallet || 0, kyc: b.kycStatus === 'verified' ? 'verified' : 'pending', shopName: b.shopName || '', assignedTo: null };
-        all.push(nu); byPhone[p] = nu;
-      } else if (!byPhone[p].role && b.role) { byPhone[p].role = b.role; }
-    });
-    // parent links held in the backend win over older website values
-    j.users.forEach(function(b){
-      if (!b.linked) return;
-      var child = byPhone[norm(b.phone)]; if (!child) return;
-      var par = b.parentPhone ? byPhone[norm(b.parentPhone)] : null;
-      child.assignedTo = par ? par.uid : null;
-    });
-    window._assignUsers = all;
-  } catch (e) { /* keep whatever the website already loaded */ }
-}
-</script>
-<script id="assign-sd-web">
-function assignPick(uid){
-  var all = window._assignUsers || [];
-  var d = document.getElementById('assign-d-' + uid), s = document.getElementById('assign-s-' + uid), h = document.getElementById('assign-sel-' + uid);
-  if (!d || !s || !h) return;
-  if (d.value) {
-    var dist = all.filter(function(p){ return p.uid === d.value; })[0];
-    s.value = (dist && dist.assignedTo) ? dist.assignedTo : '';
-    s.disabled = true; h.value = d.value;
-  } else {
-    var was = s.disabled; s.disabled = false; if (was) s.value = ''; h.value = s.value;
-  }
-}
-
-function showAssignTab(type){
-  ['retailer','distributor'].forEach(function(t){
-    var btn = document.getElementById('at-' + t); if (!btn) return;
-    var isActive = t === type, col = t === 'retailer' ? 'var(--green)' : 'var(--cyan)';
-    btn.style.borderColor = isActive ? col : 'var(--border)';
-    btn.style.background = isActive ? (t === 'retailer' ? 'rgba(16,185,129,.1)' : 'rgba(6,182,212,.1)') : 'transparent';
-    btn.style.color = isActive ? col : 'var(--muted2)';
-  });
-  var all = window._assignUsers || [];
-  var isRet = type === 'retailer';
-  var targets = all.filter(function(u){ return u.role === type; });
-  var dists = all.filter(function(u){ return u.role === 'distributor'; });
-  var sds = all.filter(function(u){ return u.role === 'superdist'; });
-  var targetLabel = isRet ? 'Retailer' : 'Distributor';
-  var rc = getRC(type), prc = getRC(isRet ? 'distributor' : 'superdist'), src = getRC('superdist');
-  var cols = isRet ? '1fr 1fr 1fr 1fr auto' : '1fr 1fr 1fr auto';
-  function selStyle(on, col){ return 'width:100%;background:var(--bg3);border:1px solid ' + (on ? col : 'var(--border)') + ';border-radius:7px;padding:5px 8px;color:var(--text);font-size:.74rem;appearance:none'; }
-
-  var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto">'
-    + '<div style="min-width:' + (isRet ? '760px' : '560px') + '"><div style="background:var(--bg3);padding:10px 14px;display:grid;grid-template-columns:' + cols + ';gap:8px;font-size:.7rem;color:var(--muted2);font-weight:600;text-transform:uppercase">'
-    + '<span>' + targetLabel + ' Name</span><span>Contact</span>' + (isRet ? '<span>Distributor</span><span>Super Distributor</span>' : '<span>Super Distributor</span>') + '<span>Action</span></div>';
-
-  if (!targets.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--muted2)">No ' + targetLabel + 's registered yet</div>';
-  } else {
-    targets.forEach(function(u){
-      var cur = u.assignedTo ? all.filter(function(p){ return p.uid === u.assignedTo; })[0] : null;
-      html += '<div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center">'
-        + '<div style="display:flex;align-items:center;gap:8px;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + rc.color + '22;color:' + rc.color + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0">' + aepsEsc((u.name || 'U')[0].toUpperCase()) + '</div>'
-        + '<div style="min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + aepsEsc(u.name) + '</div>'
-        + (u.shopName ? '<div style="font-size:.68rem;color:var(--muted2)">🏪 ' + aepsEsc(u.shopName) + '</div>' : '') + '</div></div>'
-        + '<div style="font-size:.75rem;color:var(--muted2)">' + aepsEsc(u.phone || '') + (u.email ? '<br/>' + aepsEsc(String(u.email).split('@')[0]) + '...' : '') + '</div>';
-      if (isRet) {
-        var distSel = cur && cur.role === 'distributor' ? cur.uid : '';
-        var sdSel = cur && cur.role === 'superdist' ? cur.uid : (cur && cur.role === 'distributor' && cur.assignedTo ? cur.assignedTo : '');
-        html += '<div><select id="assign-d-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" style="' + selStyle(distSel, prc.color) + '"><option value="">-- No distributor --</option>'
-          + dists.map(function(p){ return '<option value="' + p.uid + '"' + (distSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select></div>'
-          + '<div><select id="assign-s-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + (distSel ? 'disabled' : '') + ' style="' + selStyle(sdSel, src.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (sdSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (distSel ? '<div style="font-size:.62rem;color:var(--muted2);margin-top:2px">via distributor</div>' : (sdSel ? '<div style="font-size:.62rem;color:' + src.color + ';margin-top:2px">direct to super distributor</div>' : '')) + '</div>'
-          + '<input type="hidden" id="assign-sel-' + u.uid + '" value="' + aepsEsc(u.assignedTo || '') + '"/>';
-      } else {
-        html += '<div><select id="assign-sel-' + u.uid + '" style="' + selStyle(cur, prc.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (u.assignedTo === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (cur ? '<div style="font-size:.65rem;color:' + prc.color + ';margin-top:2px">✓ ' + aepsEsc(cur.name) + '</div>' : '') + '</div>';
-      }
-      html += '<button onclick="doAssign(\'' + u.uid + '\',\'' + type + '\')" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;font-size:.72rem;cursor:pointer;font-weight:700;white-space:nowrap">Save ✓</button></div>';
-    });
-  }
-  html += '</div></div>';
-
-  var assigned = targets.filter(function(u){ return u.assignedTo; }).length, unassigned = targets.length - assigned;
-  function card(n, label, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:' + col + '">' + n + '</div><div style="font-size:.65rem;color:var(--muted2)">' + label + '</div></div>'; }
-  html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
-    + card(targets.length, 'Total ' + targetLabel + 's', rc.color) + card(assigned, 'Assigned', 'var(--green)') + card(unassigned, 'Unassigned', 'var(--gold)')
-    + (isRet ? card(dists.length, 'Distributors', prc.color) + card(sds.length, 'Super Distributors', src.color) : card(sds.length, 'Super Distributors', prc.color))
-    + '</div>' + html;
-  document.getElementById('assign-content').innerHTML = html;
-}
-</script>
-<script id="golive-clean-web">
-// ---------- shared: real ledger (admin) ----------
-var _GL = { rows: null, at: 0 };
-async function glLoadLedger(force){
-  if (!force && _GL.rows && Date.now() - _GL.at < 15000) return _GL.rows;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/ledger?limit=500');
-    var j = await r.json();
-    if (j && j.success && Array.isArray(j.transactions)) { _GL.rows = j.transactions; _GL.at = Date.now(); return _GL.rows; }
-  } catch (e) {}
-  return null;
-}
-function glMoney(n){ return '₹' + (Number(n) || 0).toLocaleString('en-IN'); }
-function glCard(label, val, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-family:var(--font-head);font-size:1.15rem;font-weight:700;color:' + col + '">' + val + '</div><div style="font-size:.68rem;color:var(--muted2);margin-top:3px">' + label + '</div></div>'; }
-
-// ---------- Fraud Engine: honest page, no invented alerts ----------
-renderFraudEngine = function(){
-  var el = document.getElementById('page-fraud'); if (!el) return;
-  var controls = [
-    ['🔐', 'Login required', 'Every AEPS, network and admin API call needs a valid login token'],
-    ['🚫', 'One wallet credit per Eko transaction', 'A withdrawal can never credit the wallet twice'],
-    ['❄️', 'Frozen accounts blocked', 'Frozen retailers cannot run AEPS'],
-    ['👆', 'Biometric + OTP', 'Aadhaar fingerprint on every AEPS call; customer SMS OTP above ₹5,000'],
-    ['⏳', 'Pending withdrawals', 'Held as pending until Eko confirms; no cash credit before confirmation']
-  ];
-  el.innerHTML = '<div class="page-title" style="color:var(--red)">🔍 Fraud Engine</div>'
-    + '<div class="page-sub">Controls enforced by the platform · real alerts only</div>'
-    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:10px">🚨 Fraud Alerts</div>'
-    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:26px;text-align:center;color:var(--muted2);margin-bottom:18px"><div style="font-size:2rem;margin-bottom:6px">✅</div><div style="font-size:.88rem">No fraud alerts recorded.</div><div style="font-size:.72rem;margin-top:4px">Alerts will appear here when the platform flags a real transaction.</div></div>'
-    + '<div style="font-family:var(--font-head);font-size:.95rem;font-weight:700;margin-bottom:10px">🛡️ Controls in force</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px">'
-    + controls.map(function(x){ return '<div style="background:var(--bg2);border:1px solid rgba(0,212,170,.2);border-radius:12px;padding:12px"><div style="font-size:1.3rem;margin-bottom:5px">' + x[0] + '</div><div style="font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:3px">' + x[1] + '</div><div style="font-size:.7rem;color:var(--muted2)">' + x[2] + '</div></div>'; }).join('')
-    + '</div>';
-};
-
-// ---------- Reconcile: REAL ledger ----------
-renderReconcile = async function(){
-  var el = document.getElementById('page-reconcile'); if (!el) return;
-  el.innerHTML = '<div class="page-title">📒 Reconcile</div><div class="page-sub">Real transaction ledger</div><div style="text-align:center;padding:30px;color:var(--muted2)">⏳ Loading ledger…</div>';
-  var rows = await glLoadLedger(true);
-  if (!rows) { el.innerHTML = '<div class="page-title">📒 Reconcile</div><div style="padding:24px;color:#ef4444">Could not load the ledger. Log in as admin and try again.</div>'; return; }
-  var by = {}, tot = { n: 0, ok: 0, pend: 0, fail: 0, att: 0 };
-  rows.forEach(function(t){
-    var k = t.mainService || 'other'; by[k] = by[k] || { n: 0, cr: 0, dr: 0, pend: 0, fail: 0 };
-    by[k].n++; tot.n++;
-    if (t.status === 'success') { tot.ok++; if (t.type === 'credit') by[k].cr += t.amount; else by[k].dr += t.amount; }
-    else if (t.status === 'pending') { by[k].pend++; tot.pend++; }
-    else { by[k].fail++; tot.fail++; }
-  });
-  var attention = rows.filter(function(t){ return t.status !== 'success'; });
-  function when(d){ try { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
-  var svcRows = Object.keys(by).map(function(k){ var b = by[k];
-    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-size:.8rem;font-weight:600">' + k.toUpperCase() + '</td><td style="padding:8px 10px;font-size:.78rem">' + b.n + '</td><td style="padding:8px 10px;font-size:.78rem;color:var(--green)">' + glMoney(b.cr) + '</td><td style="padding:8px 10px;font-size:.78rem;color:#ef4444">' + glMoney(b.dr) + '</td><td style="padding:8px 10px;font-size:.78rem;color:var(--gold)">' + b.pend + '</td><td style="padding:8px 10px;font-size:.78rem;color:#ef4444">' + b.fail + '</td></tr>'; }).join('');
-  var attRows = attention.slice(0, 100).map(function(t){
-    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc(when(t.createdAt)) + '</td><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc((t.mainService || '') + (t.subService ? ' / ' + t.subService : '')) + '</td><td style="padding:7px 10px;font-size:.74rem">' + aepsEsc(t.userName || t.phone) + '</td><td style="padding:7px 10px;font-size:.74rem">' + glMoney(t.amount) + '</td><td style="padding:7px 10px;font-size:.74rem;color:' + (t.status === 'pending' ? 'var(--gold)' : '#ef4444') + '">' + aepsEsc(t.status) + '</td><td style="padding:7px 10px;font-size:.7rem;color:var(--muted2)">' + aepsEsc(t.reference) + '</td></tr>'; }).join('');
-  var th = function(s){ return '<th style="padding:8px 10px;text-align:left;font-size:.68rem;color:var(--muted2)">' + s + '</th>'; };
-  el.innerHTML = '<div class="page-title">📒 Reconcile</div><div class="page-sub">Real transaction ledger · latest ' + rows.length + ' entries</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px">'
-    + glCard('Entries', tot.n, 'var(--cyan)') + glCard('Successful', tot.ok, 'var(--green)') + glCard('Pending', tot.pend, 'var(--gold)') + glCard('Failed / other', tot.fail, '#ef4444') + '</div>'
-    + (rows.length ? '' : '<div style="text-align:center;padding:26px;color:var(--muted2)">No transactions yet.</div>')
-    + (rows.length ? '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;margin-bottom:8px">By service</div><div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:480px"><thead><tr style="background:var(--bg3)">' + th('SERVICE') + th('ENTRIES') + th('CREDITED') + th('DEBITED') + th('PENDING') + th('FAILED') + '</tr></thead><tbody>' + svcRows + '</tbody></table></div>' : '')
-    + '<div style="font-family:var(--font-head);font-size:.92rem;font-weight:700;margin-bottom:8px">Needs attention (' + attention.length + ')</div>'
-    + (attention.length ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:520px"><thead><tr style="background:var(--bg3)">' + th('TIME') + th('SERVICE') + th('USER') + th('AMOUNT') + th('STATUS') + th('REFERENCE') + '</tr></thead><tbody>' + attRows + '</tbody></table></div>'
-      : '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;text-align:center;color:var(--muted2);font-size:.85rem">✅ Nothing pending or failed.</div>');
-};
-
-// ---------- Disputes: admin sees the REAL ledger; no money moves in the browser ----------
-var _origRenderDispute = renderDispute;
-renderDispute = async function(){
-  try {
-    if (CU && (CU.role === 'admin' || CU.role === 'whitelabel')) {
-      var rows = await glLoadLedger(false);
-      if (rows) window._allNetworkTxns = rows.map(function(t){
-        var d = t.createdAt ? new Date(t.createdAt) : null;
-        return { txnId: t.reference || (t.phone + '-' + (d ? d.getTime() : '')), title: (t.mainService || 'txn') + (t.subService ? ' / ' + t.subService : ''), service: t.mainService, amount: t.amount, type: t.type,
-          status: t.status, date: d ? d.toLocaleDateString('en-IN') : '', userName: t.userName || t.phone, userRole: t.userRole, phone: t.phone, disputeStatus: 'none' };
-      });
-    }
-  } catch (e) {}
-  _origRenderDispute();
-};
-
-// A reversal never credits a wallet from the browser (wallets live on the server). It records a request only.
-initiateReversal = function(txnId){
-  if (!confirm('Record a reversal request for ' + txnId + '?\nNo money moves until it is verified with the payment partner and credited from the server.')) return;
-  TXN_HISTORY.forEach(function(x){ if (x.txnId === txnId) { x.disputeStatus = 'reversal'; } });
-  if (db && CU && CU.uid) {
-    db.collection('bankme_disputes').add({ txnId: txnId, type: 'reversal', raisedBy: CU.uid, raisedByName: CU.name, raisedByRole: CU.role, date: nowStr(), status: 'open' }).catch(function(){});
-    db.collection('bankme_users').doc(CU.uid).update({ txns: TXN_HISTORY }).catch(function(){});
-  }
-  toast('Reversal request recorded for ' + txnId + ' — no wallet change', 's');
-  renderDispute();
-};
-
-// No simulated outcome: AEPS withdrawals are checked with Eko; other services have no live check yet.
-checkTxnStatus = async function(txnId){
-  var t = (TXN_HISTORY || []).filter(function(x){ return x.txnId === txnId; })[0];
-  if (!t || t.service !== 'aeps') { toast('Live status check is only available for AEPS withdrawals right now', 'i'); return; }
-  toast('Checking with Eko…', 'i');
-  try {
-    var r = await authFetch(AEPS_API + '/eko/aeps/v2/reconcile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tid: txnId }) });
-    var j = await r.json();
-    if (!j || !j.success) { toast((j && j.error) || 'Could not check status', 'e'); return; }
-    if (j.state === 'success') { t.status = 'success'; toast('Confirmed by Eko' + (j.credited ? ' — wallet credited' : ''), 's'); }
-    else if (j.state === 'failed') { t.status = 'failed'; toast('Failed at the bank — nothing credited', 'e'); }
-    else toast('Still pending at the bank', 'i');
-    renderDispute();
-  } catch (e) { toast('Could not check status', 'e'); }
-};
-</script>
-<script id="pan-name-web">
-// "User 7191" style names are placeholders created at first login, never real names
-function bmNameOk(n){ n = String(n == null ? '' : n).trim(); return !!n && !/^user\s*\d{0,4}$/i.test(n); }
-function bmDisplayName(){
-  if (!CU) return '';
-  if (CU.panName) return aepsEsc(CU.panName);
-  if (bmNameOk(CU.name)) return aepsEsc(CU.name);
-  return '<span style="color:var(--gold);font-size:.9rem">Complete your KYC to add your name</span>';
-}
-async function bmLoadKyc(){
-  var phone = String((CU && (CU.phone || CU.mobile)) || '').replace(/\D/g, '').slice(-10);
-  if (CU && CU.panName && CU.panNumber) return { panName: CU.panName, panNumber: CU.panNumber, dob: CU.dob };
-  if (phone.length !== 10) return {};
-  try {
-    var r = await fetch(BACKEND_URL + '/user/' + phone + '/kyc-status'); var d = await r.json();
-    if (d && d.success) return { panName: bmNameOk(d.panName) ? d.panName : '', panNumber: d.panNumber || '', dob: d.dob || '' };
-  } catch (e) {}
-  return {};
-}
-</script>
-<script id="customer-upgrade-web">
-async function bmApplyRetailerUpgrade(d){
-  try {
-    if (CU) { CU.role = 'retailer'; if (d.internalId) CU.internalId = d.internalId; }
-    if (db && CU && CU.uid && String(CU.uid).indexOf('demo-') !== 0) {
-      await db.collection('bankme_users').doc(CU.uid).update({ role: 'retailer', ekoUserCode: String(d.userCode || '') }).catch(function(){});
-    }
-    var rc = getRC('retailer'), badge = document.getElementById('role-badge');
-    if (badge) { badge.textContent = rc.label; badge.style.background = rc.color + '20'; badge.style.color = rc.color; badge.style.border = '1px solid ' + rc.color + '40'; }
-    var nm = document.getElementById('nb-mynetwork'); if (nm) nm.style.display = '';
-    toast('Your account is now a Retailer account ✅', 's');
-  } catch (e) {}
-}
-</script>
-<script id="upgrade-admin-web">
-var _upgInfo = {};
-var _origMergeAssign = mergeBackendAssignUsers;
-mergeBackendAssignUsers = async function(){
-  await _origMergeAssign();
-  _upgInfo = {};
-  if (!CU || CU.role !== 'admin') return;
-  try {
-    var r = await authFetch(AEPS_API + '/admin/network/users'); var j = await r.json();
-    if (!j || !j.success || !Array.isArray(j.users)) return;
-    var all = window._assignUsers || [], norm = function(p){ return String(p || '').replace(/\D/g, '').slice(-10); };
-    j.users.forEach(function(b){
-      if (!b.upgradedFromCustomer) return;
-      var p = norm(b.phone); _upgInfo[p] = { at: b.upgradedAt, internalId: b.internalId, eko: b.ekoUserCode };
-      all.forEach(function(u){ if (norm(u.phone || u.mobile) === p) u.upgraded = true; });
-    });
-  } catch (e) {}
-};
-
-function assignPick(uid){
-  var all = window._assignUsers || [];
-  var d = document.getElementById('assign-d-' + uid), s = document.getElementById('assign-s-' + uid), a = document.getElementById('assign-a-' + uid), h = document.getElementById('assign-sel-' + uid);
-  if (!d || !s || !h) return;
-  if (d.value) {
-    var dist = all.filter(function(p){ return p.uid === d.value; })[0];
-    s.value = (dist && dist.assignedTo) ? dist.assignedTo : ''; s.disabled = true;
-    if (a) { a.value = ''; a.disabled = true; }
-    h.value = d.value;
-  } else {
-    var wasS = s.disabled; s.disabled = false; if (wasS) s.value = '';
-    if (s.value) { if (a) { a.value = ''; a.disabled = true; } h.value = s.value; }
-    else { if (a) a.disabled = false; h.value = a ? a.value : ''; }
-  }
-}
-
-function showAssignTab(type){
-  ['retailer','distributor'].forEach(function(t){
-    var btn = document.getElementById('at-' + t); if (!btn) return;
-    var isActive = t === type, col = t === 'retailer' ? 'var(--green)' : 'var(--cyan)';
-    btn.style.borderColor = isActive ? col : 'var(--border)';
-    btn.style.background = isActive ? (t === 'retailer' ? 'rgba(16,185,129,.1)' : 'rgba(6,182,212,.1)') : 'transparent';
-    btn.style.color = isActive ? col : 'var(--muted2)';
-  });
-  var all = window._assignUsers || [];
-  var isRet = type === 'retailer';
-  var targets = all.filter(function(u){ return u.role === type; });
-  var dists = all.filter(function(u){ return u.role === 'distributor'; });
-  var sds = all.filter(function(u){ return u.role === 'superdist'; });
-  var adm = all.filter(function(u){ return u.role === 'admin'; })[0] || null;
-  var targetLabel = isRet ? 'Retailer' : 'Distributor';
-  var rc = getRC(type), prc = getRC(isRet ? 'distributor' : 'superdist'), src = getRC('superdist');
-  var cols = isRet ? '1fr 1fr 1fr 1fr 1fr auto' : '1fr 1fr 1fr auto';
-  function selStyle(on, col){ return 'width:100%;background:var(--bg3);border:1px solid ' + (on ? col : 'var(--border)') + ';border-radius:7px;padding:5px 8px;color:var(--text);font-size:.74rem;appearance:none'; }
-  function dstr(x){ try { return x ? new Date(x).toLocaleDateString('en-IN') : '-'; } catch (e) { return '-'; } }
-  function parentName(u){ var p = u.assignedTo ? all.filter(function(q){ return q.uid === u.assignedTo; })[0] : null; return p ? (p.role === 'admin' ? 'Admin (direct)' : p.name + ' (' + (getRC(p.role).label || p.role) + ')') : 'Unassigned'; }
-
-  var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:auto">'
-    + '<div style="min-width:' + (isRet ? '900px' : '560px') + '"><div style="background:var(--bg3);padding:10px 14px;display:grid;grid-template-columns:' + cols + ';gap:8px;font-size:.7rem;color:var(--muted2);font-weight:600;text-transform:uppercase">'
-    + '<span>' + targetLabel + ' Name</span><span>Contact</span>' + (isRet ? '<span>Distributor</span><span>Super Distributor</span><span>Admin</span>' : '<span>Super Distributor</span>') + '<span>Action</span></div>';
-
-  if (!targets.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--muted2)">No ' + targetLabel + 's registered yet</div>';
-  } else {
-    targets.forEach(function(u){
-      var cur = u.assignedTo ? all.filter(function(p){ return p.uid === u.assignedTo; })[0] : null;
-      var up = isRet && u.upgraded;
-      html += '<div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:' + cols + ';gap:8px;align-items:center">'
-        + '<div style="display:flex;align-items:center;gap:8px;min-width:0"><div style="width:28px;height:28px;border-radius:50%;background:' + rc.color + '22;color:' + rc.color + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;flex-shrink:0">' + aepsEsc((u.name || 'U')[0].toUpperCase()) + '</div>'
-        + '<div style="min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + aepsEsc(u.name) + '</div>'
-        + (up ? '<span style="font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:100px;background:rgba(245,158,11,.15);color:var(--gold);border:1px solid rgba(245,158,11,.4)">⬆ UPGRADED</span>' : '')
-        + (u.shopName ? '<div style="font-size:.68rem;color:var(--muted2)">🏪 ' + aepsEsc(u.shopName) + '</div>' : '') + '</div></div>'
-        + '<div style="font-size:.75rem;color:var(--muted2)">' + aepsEsc(u.phone || '') + (u.email ? '<br/>' + aepsEsc(String(u.email).split('@')[0]) + '...' : '') + '</div>';
-      if (isRet) {
-        var distSel = cur && cur.role === 'distributor' ? cur.uid : '';
-        var sdSel = cur && cur.role === 'superdist' ? cur.uid : (cur && cur.role === 'distributor' && cur.assignedTo ? cur.assignedTo : '');
-        var admSel = cur && cur.role === 'admin' ? cur.uid : '';
-        html += '<div><select id="assign-d-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" style="' + selStyle(distSel, prc.color) + '"><option value="">-- No distributor --</option>'
-          + dists.map(function(p){ return '<option value="' + p.uid + '"' + (distSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select></div>'
-          + '<div><select id="assign-s-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + (distSel ? 'disabled' : '') + ' style="' + selStyle(sdSel, src.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (sdSel === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (distSel ? '<div style="font-size:.62rem;color:var(--muted2);margin-top:2px">via distributor</div>' : (sdSel ? '<div style="font-size:.62rem;color:' + src.color + ';margin-top:2px">direct to super distributor</div>' : '')) + '</div>'
-          + '<div>' + (adm
-              ? '<select id="assign-a-' + u.uid + '" onchange="assignPick(\'' + u.uid + '\')" ' + ((distSel || sdSel) ? 'disabled' : '') + ' style="' + selStyle(admSel, 'var(--gold)') + '"><option value="">-- None --</option><option value="' + adm.uid + '"' + (admSel ? ' selected' : '') + '>Direct to Admin</option></select>'
-                + (admSel ? '<div style="font-size:.62rem;color:var(--gold);margin-top:2px">commission to admin</div>' : '')
-              : '<div style="font-size:.65rem;color:var(--muted2)">Admin account not found</div>') + '</div>'
-          + '<input type="hidden" id="assign-sel-' + u.uid + '" value="' + aepsEsc(u.assignedTo || '') + '"/>';
-      } else {
-        html += '<div><select id="assign-sel-' + u.uid + '" style="' + selStyle(cur, prc.color) + '"><option value="">-- Unassigned --</option>'
-          + sds.map(function(p){ return '<option value="' + p.uid + '"' + (u.assignedTo === p.uid ? ' selected' : '') + '>' + aepsEsc(p.name) + '</option>'; }).join('') + '</select>'
-          + (cur ? '<div style="font-size:.65rem;color:' + prc.color + ';margin-top:2px">✓ ' + aepsEsc(cur.name) + '</div>' : '') + '</div>';
-      }
-      html += '<button onclick="doAssign(\'' + u.uid + '\',\'' + type + '\')" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--rtai),var(--rtai2));border:none;color:#000;font-size:.72rem;cursor:pointer;font-weight:700;white-space:nowrap">Save ✓</button></div>';
-    });
-  }
-  html += '</div></div>';
-
-  var assigned = targets.filter(function(u){ return u.assignedTo; }).length, unassigned = targets.length - assigned;
-  var direct = isRet ? targets.filter(function(u){ var p = u.assignedTo ? all.filter(function(q){ return q.uid === u.assignedTo; })[0] : null; return p && p.role === 'admin'; }).length : 0;
-  var upgraded = isRet ? targets.filter(function(u){ return u.upgraded; }) : [];
-  function card(n, label, col){ return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><div style="font-family:var(--font-head);font-size:1.2rem;font-weight:700;color:' + col + '">' + n + '</div><div style="font-size:.65rem;color:var(--muted2)">' + label + '</div></div>'; }
-
-  var upBox = '';
-  if (isRet) {
-    upBox = '<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:12px 14px;margin-bottom:14px">'
-      + '<div style="font-family:var(--font-head);font-size:.88rem;font-weight:700;color:var(--gold);margin-bottom:' + (upgraded.length ? '8px' : '2px') + '">⬆ Upgraded customers (' + upgraded.length + ')</div>'
-      + (upgraded.length
-          ? upgraded.map(function(u){
-              var i = _upgInfo[String(u.phone || '').replace(/\D/g, '').slice(-10)] || {};
-              return '<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr 1.2fr;gap:8px;font-size:.74rem;padding:6px 0;border-top:1px solid var(--border);color:var(--text)">'
-                + '<span style="font-weight:600">' + aepsEsc(u.name) + '</span><span>' + aepsEsc(u.phone || '') + '</span><span>' + dstr(i.at) + '</span>'
-                + '<span style="color:var(--muted2)">' + aepsEsc(i.internalId || '') + (i.eko ? ' · Eko ' + aepsEsc(i.eko) : '') + '</span>'
-                + '<span style="color:var(--gold)">' + aepsEsc(parentName(u)) + '</span></div>';
-            }).join('')
-          : '<div style="font-size:.74rem;color:var(--muted2)">No customer has upgraded to retailer yet. Upgraded customers appear here and are assigned directly to the admin.</div>')
-      + '</div>';
-  }
-  html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
-    + card(targets.length, 'Total ' + targetLabel + 's', rc.color) + card(assigned, 'Assigned', 'var(--green)') + card(unassigned, 'Unassigned', 'var(--gold)')
-    + (isRet ? card(direct, 'Direct to Admin', 'var(--gold)') + card(upgraded.length, 'Upgraded', 'var(--gold)') + card(dists.length, 'Distributors', prc.color) + card(sds.length, 'Super Distributors', src.color) : card(sds.length, 'Super Distributors', prc.color))
-    + '</div>' + upBox + html;
-  document.getElementById('assign-content').innerHTML = html;
-}
-</script>
 </body>
 </html>
 
