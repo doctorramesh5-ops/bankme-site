@@ -9950,7 +9950,7 @@ async function aepsOperatorDaily(){
     + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.25);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
     + '<div style="font-size:2.8rem;margin-bottom:10px">👆</div>'
     + '<div style="font-weight:700;color:var(--rtai);font-size:1rem;margin-bottom:4px">Place YOUR finger on the scanner</div>'
-    + '<div style="color:var(--muted2);font-size:.78rem">Operator daily verification · Aadhaar XXXX XXXX ' + AEPS_LIVE.opAadhaar.slice(-4) + '</div></div>'
+    + '<div style="color:var(--muted2);font-size:.78rem">BankMe Daily Verification · Aadhaar XXXX XXXX ' + AEPS_LIVE.opAadhaar.slice(-4) + '</div></div>'
     + '<button onclick="aepsRunDaily()" class="btn-primary">👆 Scan Fingerprint</button>'
     + '<button onclick="initAEPSWizard()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
 }
@@ -9963,7 +9963,7 @@ async function aepsRunDaily(){
   var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/daily', aepsOpBody({ piddata: cap.xml }));
   if (r.ok && r.code === 1713) { return aepsOperatorDone(); }
   if (/ekyc/i.test(r.msg || '')) { return aepsEkycStart(); }
-  return aepsFail(2, r.msg || 'Daily KYC failed', 'aepsOperatorDaily()');
+  return aepsFail(2, r.msg || 'BankMe daily verification failed', 'aepsOperatorDaily()');
 }
 
 function aepsOperatorDone(){
@@ -9973,7 +9973,7 @@ function aepsOperatorDone(){
     + '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35);border-radius:14px;padding:20px;text-align:center;margin-bottom:16px">'
     + '<div style="font-size:2.5rem;margin-bottom:8px">✅</div>'
     + '<div style="font-family:var(--font-head);font-size:1.05rem;font-weight:700;color:var(--green);margin-bottom:4px">Operator Verified for Today</div>'
-    + '<div style="font-size:.78rem;color:var(--muted2)">' + aepsEsc(CU ? CU.name : 'Operator') + ' · UIDAI daily KYC complete</div></div>'
+    + '<div style="font-size:.78rem;color:var(--muted2)">' + aepsEsc(CU ? CU.name : 'Operator') + ' · BankMe daily verification complete</div></div>'
     + '<button onclick="renderAEPSStep3()" class="btn-primary">Proceed to AEPS Service →</button>';
   setTimeout(function(){ if (AEPS_WIZARD.step === 2) renderAEPSStep3(); }, 1200);
 }
@@ -9984,7 +9984,7 @@ function aepsEkycStart(){
   w.innerHTML = aepsStepBar(2)
     + '<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:14px;margin-bottom:14px">'
     + '<div style="font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px">One-time e-KYC needed</div>'
-    + '<div style="font-size:.76rem;color:var(--muted2);line-height:1.55">Your bank e-KYC is not complete yet. We will send an OTP to your Aadhaar-linked mobile, then scan your finger once. After this you only need the daily fingerprint.</div></div>'
+    + '<div style="font-size:.76rem;color:var(--muted2);line-height:1.55">Your BankMe AePS one-time verification is not complete yet. We will send an OTP to your Aadhaar-linked mobile, then scan your finger once. After this you only need the daily fingerprint.</div></div>'
     + '<button onclick="aepsEkycSendOtp()" class="btn-primary">Send OTP to my Aadhaar mobile</button>';
 }
 async function aepsEkycSendOtp(){
@@ -10018,7 +10018,7 @@ async function aepsEkycBio(){
   aepsBusy(2, 'Completing e-KYC…', 'This can take up to a minute');
   var r = await aepsCall('PUT', '/eko/aeps/v2/kyc/biometric', aepsOpBody({ piddata: cap.xml, otpRefId: AEPS_LIVE.kyc.otpRefId, referenceTid: AEPS_LIVE.kyc.referenceTid }));
   if (!(r.ok && r.code === 1605)) return aepsFail(2, r.msg || 'e-KYC failed', 'aepsEkycStart()');
-  toast('e-KYC complete ✅ — now your daily fingerprint', 's');
+  toast('One-time verification complete ✅ — now your BankMe daily fingerprint', 's');
   aepsOperatorDaily();
 }
 
