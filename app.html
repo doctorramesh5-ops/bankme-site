@@ -9760,9 +9760,10 @@ async function aepsDiscoverRD(){
 }
 
 // returns {xml} or {error}
-async function aepsCaptureFinger(wadh){
+async function aepsCaptureFinger(wadh, otp){
+  otp = String(otp || '').replace(/\D/g, '');
   if (!AEPS_RD.base && !(await aepsDiscoverRD())) return { error: 'No biometric device found. Plug in the scanner, install its RD Service driver, and try again (Windows PC + Chrome/Edge).' };
-  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" posh="UNKNOWN" env="P"/></PidOptions>';
+  var opts = '<?xml version="1.0"?><PidOptions ver="1.0"><Opts fCount="1" fType="2" iCount="0" pCount="0" format="0" pidVer="2.0" timeout="15000" wadh="' + (wadh || '') + '" otp="' + otp + '" posh="UNKNOWN" env="P"/></PidOptions>';
   try {
     var r = await aepsFetchTO(AEPS_RD.base + AEPS_RD.capture, { method: 'CAPTURE', body: opts }, 30000);
     var xml = await r.text();
@@ -10042,6 +10043,7 @@ async function processAEPSCustomer(){
     + '<div style="background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.2);border-radius:14px;padding:20px;text-align:center;margin-bottom:14px">'
     + '<div style="font-size:2.5rem;margin-bottom:10px">👆</div><div style="font-weight:700;color:var(--rtai);font-size:.95rem;margin-bottom:4px">Customer Finger Placement</div>'
     + '<div style="color:var(--muted2);font-size:.78rem">Aadhaar XXXX XXXX ' + aad.slice(-4) + ' · ' + aepsEsc(bankName) + '</div></div>'
+    + (txnOtpId ? '<label class="flabel">Customer\'s 6-digit SMS OTP</label><input class="finp" id="m-txn-otp" type="tel" maxlength="6" placeholder="OTP sent to the customer\'s Aadhaar-linked mobile" style="letter-spacing:6px;font-size:1.2rem;font-weight:700;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"/>' : '')
     + '<button onclick="aepsCustomerGo()" class="btn-primary">👆 Scan Customer Fingerprint</button>'
     + '<button onclick="renderAEPSStep3()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem">← Back</button>';
   AEPS_LIVE.pending = { type: type, amount: amount, base: base, txnOtpId: txnOtpId, bankName: bankName };
@@ -10049,8 +10051,13 @@ async function processAEPSCustomer(){
 
 async function aepsCustomerGo(){
   var p = AEPS_LIVE.pending; if (!p) return renderAEPSStep3();
+  var txnOtp = '';
+  if (p.txnOtpId) {
+    txnOtp = ((document.getElementById('m-txn-otp') || {}).value || '').replace(/\D/g, '');
+    if (txnOtp.length !== 6) { toast("Enter the customer's 6-digit SMS OTP", 'e'); return; }
+  }
   aepsBusy(3, 'Scanning…', 'Ask the customer to keep the finger on the device');
-  var cap = await aepsCaptureFinger('');
+  var cap = await aepsCaptureFinger('', txnOtp);
   if (cap.error) return aepsFail(3, cap.error, 'renderAEPSStep3()');
   aepsBusy(3, 'Processing AEPS transaction…', 'Contacting ' + p.bankName + ' — do not close this window');
   var body = Object.assign({}, p.base, { piddata: cap.xml });
