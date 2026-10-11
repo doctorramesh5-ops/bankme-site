@@ -6575,7 +6575,14 @@ function loadBankAccounts(){
         var st = statusMap[a.verificationStatus] || statusMap.pending;
         var statusLabel = st[0];
         var statusColor = st[1];
-        return '<div class="prow" style="align-items:flex-start"><div><div style="font-weight:600;font-size:.85rem">'+(a.bankName||'Bank')+'</div><div style="font-size:.72rem;color:var(--muted2)">A/C ...'+String(a.accountNumber||'').slice(-4)+' · '+(a.ifsc||'')+'</div></div><span style="font-size:.68rem;font-weight:700;color:'+statusColor+'">'+statusLabel+'</span></div>';
+        var holder = a.accountHolderName || a.bankName || 'Bank';
+        var sub = [a.bankName, a.branch, a.city].filter(function(x){return x;}).join(' · ');
+        return '<div class="prow" style="align-items:flex-start"><div style="min-width:0">'
+          +'<div style="font-weight:700;font-size:.85rem">'+holder+'</div>'
+          +(sub?'<div style="font-size:.72rem;color:var(--muted2)">'+sub+'</div>':'')
+          +'<div style="font-size:.72rem;color:var(--muted2)">A/C ...'+String(a.accountNumber||'').slice(-4)+' · '+(a.ifsc||'')+'</div>'
+          +'</div><div style="text-align:right"><span style="display:block;font-size:.68rem;font-weight:700;color:'+statusColor+'">'+statusLabel+'</span>'
+          +'<button onclick="removeBankAccount(\''+a._id+'\',\''+String(a.accountNumber||'').slice(-4)+'\')" style="margin-top:6px;font-size:.68rem;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);padding:3px 9px;border-radius:7px;cursor:pointer">Remove</button></div></div>';
       }).join('');
     })
     .catch(function(){});
@@ -6601,7 +6608,7 @@ function submitBankAccount(){
   authFetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ accountNumber: accno, ifsc: ifsc, bankName: bankName, accountType: isBusiness ? 'business' : 'personal' })
+    body: JSON.stringify({ accountNumber: accno, ifsc: ifsc, bankName: bankName, accountType: 'personal' })
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
@@ -6714,7 +6721,7 @@ function renderProfile(skipFetch){
     +'</div>'
     +'<div id="bank-accounts-list"><div style="font-size:.78rem;color:var(--muted2);text-align:center;padding:10px">Loading...</div></div>'
     +'<div id="bank-form" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">'
-    +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">⚠️ The account holder name on this bank account must exactly match your '+(['retailer','distributor','superdist','whitelabel'].indexOf(CU.role)>=0?'registered business name':'PAN card name')+'. Mismatched accounts will be rejected.</div>'
+    +'<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">⚠️ The account holder name on this bank account must exactly match your PAN card name. Only your own personal bank account can be added. Verification fee: ₹5 (GST included). Mismatched accounts will be rejected.</div>'
     +'<label class="flabel">Select Bank</label>'
     +'<select class="fsel" id="f-bankname"><option value="">-- Select Bank --</option>'+INDIAN_BANKS.map(function(b){return '<option value="'+b+'">'+b+'</option>';}).join('')+'</select>'
     +'<label class="flabel">IFSC Code</label>'
@@ -10946,6 +10953,20 @@ function showAssignTab(type){
     aepsEkycFirst();
   };
 })();
+</script>
+<script id="bank_list_web">
+/* BANK_LIST_WEB */
+function removeBankAccount(id, last4){
+  if(!id){ toast('Could not identify this account','e'); return; }
+  if(!confirm('Remove bank account ending '+last4+'? You can add it again later, but verification (₹5) will be charged again.')) return;
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts/' + id, { method:'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.success){ toast('Bank account removed','s'); loadBankAccounts(); }
+      else { toast((d && (d.message||d.error)) || 'Could not remove bank account','e'); }
+    })
+    .catch(function(){ toast('Network error. Please try again.','e'); });
+}
 </script>
 </body>
 </html>
