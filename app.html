@@ -11532,6 +11532,134 @@ function wdSync(){
   };
 })();
 </script>
+<script id="transfer_web">
+/* TRANSFER_WEB: real wallet-to-wallet transfer through the server; above ₹1,00,000 the sender approves with fingerprint / face */
+(function(){
+  function inr(n){ return '₹' + Number(n || 0).toLocaleString('en-IN', {maximumFractionDigits: 2}); }
+  var _key = null, _keyFor = '';
+  function keyFor(mobile, amount){
+    var f = mobile + '|' + amount;
+    if(f !== _keyFor){ _keyFor = f; _key = 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+    return _key;
+  }
+  function b64u(buf){ var b = new Uint8Array(buf), s = ''; for(var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function b64(buf){ var b = new Uint8Array(buf), s = ''; for(var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s); }
+  function fromB64u(str){ str = String(str).replace(/-/g, '+').replace(/_/g, '/'); while(str.length % 4) str += '='; var bin = atob(str), a = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a.buffer; }
+  function post(path, body){ return authFetch(BACKEND_URL + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})}).then(function(r){ return r.json(); }); }
+  async function bioSupported(){
+    try { return !!(window.PublicKeyCredential && window.isSecureContext && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch(e){ return false; }
+  }
+  // One-time setup of this browser's fingerprint / face (Touch ID, Face ID, Windows Hello, Android fingerprint)
+  async function bioRegister(){
+    if(!(await bioSupported())){ toast('This device has no fingerprint / face lock for the browser. Use the BankMe mobile app for transfers above ₹1,00,000.', 'e'); return false; }
+    var c = await post('/wallet/biometric/register-challenge');
+    if(!c || !c.success){ toast((c && c.message) || 'Could not start setup', 'e'); return false; }
+    var cred;
+    try {
+      cred = await navigator.credentials.create({publicKey: {
+        challenge: fromB64u(c.challenge), rp: {name: 'BankMe', id: c.rpId},
+        user: {id: fromB64u(c.userId), name: c.userName, displayName: c.userDisplay || c.userName},
+        pubKeyCredParams: [{type: 'public-key', alg: -7}, {type: 'public-key', alg: -257}],
+        authenticatorSelection: {authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged'},
+        timeout: 60000, attestation: 'none'
+      }});
+    } catch(e){ toast('Fingerprint / face setup was cancelled', 'e'); return false; }
+    var r = cred.response;
+    if(typeof r.getPublicKey !== 'function'){ toast('This browser is too old for fingerprint / face. Please update it.', 'e'); return false; }
+    var out = await post('/wallet/biometric/register', {challengeId: c.challengeId, kind: 'webauthn', credentialId: b64u(cred.rawId), publicKey: b64(r.getPublicKey()), clientDataJSON: b64u(r.clientDataJSON), name: (navigator.platform || 'This browser').slice(0, 40)});
+    if(!out || !out.success){ toast((out && out.message) || 'Could not save', 'e'); return false; }
+    alert(out.message || 'Fingerprint / face registered.');
+    return true;
+  }
+  // Ask for fingerprint / face for one transfer; returns the proof object or null
+  async function bioApprove(mobile, amount){
+    var ch = await post('/wallet/transfer-challenge', {toPhone: mobile, amount: amount});
+    if(!ch || !ch.success){
+      if(ch && ch.needEkyc){ toast(ch.message, 'e'); setTimeout(function(){ if(confirm('Open your Profile to complete eKYC?')) goPage('profile'); }, 300); return null; }
+      if(ch && ch.needRegister){
+        if(confirm(ch.message + '\n\nSet it up now on this device?')) await bioRegister();
+        return null;
+      }
+      toast((ch && ch.message) || 'Could not start the fingerprint / face check', 'e'); return null;
+    }
+    var allow = (ch.allow || []).filter(function(a){ return a.kind === 'webauthn'; });
+    if(!allow.length){
+      if(confirm('Your fingerprint / face is registered only on your mobile app. Use the app for this transfer, or set up this browser now?')) await bioRegister();
+      return null;
+    }
+    if(!(await bioSupported())){ toast('This device has no fingerprint / face lock for the browser. Use the BankMe mobile app.', 'e'); return null; }
+    var a;
+    try {
+      a = await navigator.credentials.get({publicKey: {
+        challenge: fromB64u(ch.challenge), rpId: ch.rpId, userVerification: 'required', timeout: 60000,
+        allowCredentials: allow.map(function(x){ return {type: 'public-key', id: fromB64u(x.credentialId)}; })
+      }});
+    } catch(e){ toast('Fingerprint / face check was cancelled', 'e'); return null; }
+    var r = a.response;
+    return {challengeId: ch.challengeId, kind: 'webauthn', credentialId: b64u(a.rawId), clientDataJSON: b64u(r.clientDataJSON), authenticatorData: b64u(r.authenticatorData), signature: b64u(r.signature)};
+  }
+  window.bioRegisterWeb = bioRegister;
+  window.processTransfer = async function(){
+    var mobile = String((document.getElementById('tr-mobile') || {}).value || '').trim();
+    var amount = parseInt((document.getElementById('tr-amount') || {}).value, 10) || 0;
+    var remarks = String((document.getElementById('tr-remarks') || {}).value || '').trim();
+    if(!/^\d{10}$/.test(mobile)){ toast('Enter a valid 10-digit mobile number', 'e'); return; }
+    if(amount < 1){ toast('Enter a whole amount in rupees', 'e'); return; }
+    var q;
+    try { q = await (await authFetch(BACKEND_URL + '/wallet/transfer-quote?amount=' + amount)).json(); }
+    catch(e){ toast('Could not get the charge. Try again.', 'e'); return; }
+    if(!q || !q.success){ toast((q && q.message) || 'Amount not allowed', 'e'); return; }
+    if(q.totalDebit > ((CU && CU.wallet) || 0)){ toast('Insufficient balance. You need ' + inr(q.totalDebit) + ' (amount + charge).', 'e'); return; }
+    var look;
+    try { look = await (await authFetch(BACKEND_URL + '/wallet/lookup?phone=' + mobile)).json(); }
+    catch(e){ toast('Could not check the number. Try again.', 'e'); return; }
+    if(!look || !look.success){ toast((look && look.message) || 'Could not check the number', 'e'); return; }
+    if(!confirm('Send ' + inr(amount) + ' to ' + look.name + ' (+91 ' + mobile + ')?\n\nCharge (GST incl.): ' + (q.fee ? inr(q.fee) : 'Free') + '\nWallet debit: ' + inr(q.totalDebit))) return;
+    var proof = null;
+    if(q.requiresBiometric){
+      proof = await bioApprove(mobile, amount);
+      if(!proof) return;
+    }
+    var btn = document.querySelector('#wallet-action-panel button.btn-primary');
+    if(btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+    var res;
+    try {
+      res = await (await authFetch(BACKEND_URL + '/wallet/transfer', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({toPhone: mobile, amount: amount, remarks: remarks, idempotencyKey: keyFor(mobile, amount), authProof: proof})
+      })).json();
+    } catch(e){
+      if(btn){ btn.disabled = false; btn.textContent = 'Send →'; }
+      toast('Network problem. Check Transaction History before trying again.', 'e'); return;
+    }
+    if(btn){ btn.disabled = false; btn.textContent = 'Send →'; }
+    if(!res || !res.success){
+      toast((res && res.message) || 'Transfer failed', 'e');
+      return;
+    }
+    _keyFor = '';
+    if(typeof res.newBalance === 'number'){
+      CU.wallet = res.newBalance;
+      var chip = document.getElementById('wallet-chip'); if(chip) chip.textContent = '₹' + fmtN(CU.wallet);
+    }
+    var t = res.transfer || {};
+    var panel = document.getElementById('wallet-action-panel');
+    if(panel){
+      panel.textContent = '';
+      var box = document.createElement('div');
+      box.style.cssText = 'background:rgba(0,212,170,.1);border:1px solid var(--rtai);border-radius:12px;padding:16px;text-align:center';
+      var a = document.createElement('div'); a.style.cssText = 'font-size:1.8rem;margin-bottom:6px'; a.textContent = '✅';
+      var b = document.createElement('div'); b.style.cssText = 'color:var(--rtai);font-weight:700'; b.textContent = inr(t.amount || amount) + ' sent to ' + (t.toName || mobile);
+      var c = document.createElement('div'); c.style.cssText = 'font-size:.75rem;color:var(--muted2);margin-top:4px'; c.textContent = '+91 ' + mobile + ' · Ref ' + (t.transferId || '') + ' · Charge ' + (t.fee ? inr(t.fee) : 'Free') + ' · Balance ' + inr(CU.wallet);
+      var d = document.createElement('button'); d.textContent = 'Done ✓';
+      d.style.cssText = 'margin-top:10px;padding:8px 18px;border-radius:9px;background:var(--rtai);border:none;color:#000;cursor:pointer;font-weight:700;font-size:.82rem';
+      d.onclick = function(){ renderWallet(); };
+      box.appendChild(a); box.appendChild(b); box.appendChild(c); box.appendChild(d); panel.appendChild(box);
+    }
+    toast(inr(amount) + ' sent ✅', 's');
+  };
+})();
+</script>
 </body>
 </html>
 
