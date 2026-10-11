@@ -10872,6 +10872,30 @@ function showAssignTab(type){
   document.getElementById('assign-content').innerHTML = html;
 }
 </script>
+<script id="ekyc-offer-patch">
+(function(){
+  window.aepsDailyFailChoice = function(){
+    var w = document.getElementById("aeps-wizard"); if (!w) return;
+    w.innerHTML = aepsStepBar(2)
+      + "<div style=\"background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.28);border-radius:12px;padding:14px;margin-bottom:14px\">"
+      + "<div style=\"font-weight:700;color:var(--gold);font-size:.9rem;margin-bottom:4px\">BankMe daily verification did not complete</div>"
+      + "<div style=\"font-size:.76rem;color:var(--muted2);line-height:1.55\">If this is your first time, finish the one-time verification first (OTP to your Aadhaar-linked mobile, then one fingerprint scan). If you have already done it, check that you used the same finger and the same device, and try again.</div></div>"
+      + "<button onclick=\"aepsEkycStart()\" class=\"btn-primary\">Do one-time verification</button>"
+      + "<button onclick=\"aepsOperatorDaily()\" style=\"width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);cursor:pointer;font-size:.82rem\">Try daily fingerprint again</button>";
+  };
+  window.aepsRunDaily = async function(){
+    aepsBusy(2, "Scanning…", "Keep your finger on the device");
+    var cap = await aepsCaptureFinger("");
+    if (cap.error) return aepsFail(2, cap.error, "aepsOperatorDaily()");
+    aepsBusy(2, "Verifying with UIDAI…", "This can take up to a minute");
+    var r = await aepsCall("PUT", "/eko/aeps/v2/kyc/daily", aepsOpBody({ piddata: cap.xml }));
+    if (r.ok && r.code === 1713) { return aepsOperatorDone(); }
+    if (/ekyc/i.test(r.msg || "")) { return aepsEkycStart(); }
+    if (r.code === 1714 || /kyc fail/i.test(r.msg || "")) { return aepsDailyFailChoice(); }
+    return aepsFail(2, r.msg || "BankMe daily verification failed", "aepsOperatorDaily()");
+  };
+})();
+</script>
 </body>
 </html>
 
