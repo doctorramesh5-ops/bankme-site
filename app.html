@@ -2115,7 +2115,7 @@ function renderAdminContent(allUsers){
     +'<select id="ntr-role" class="fsel" style="margin-bottom:0"><option value="all">All Network Types</option><option value="whitelabel">White Label</option><option value="superdist">Super Distributor</option><option value="distributor">Distributor</option><option value="retailer">Retailer</option><option value="customer">Customer</option></select>'
     +'<select id="ntr-period" class="fsel" style="margin-bottom:0"><option value="all">All Time</option><option value="today">Today</option><option value="week">Weekly</option><option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Yearly</option></select>'
     +'<select id="ntr-mainservice" class="fsel" style="margin-bottom:0"><option value="">All Services</option><option value="wallet">Wallet</option></select>'
-    +'<select id="ntr-subservice" class="fsel" style="margin-bottom:0"><option value="">All Sub-Services</option><option value="add_money">Add Money</option><option value="payout">Payout</option><option value="transfer_sent">Transfer Sent</option><option value="transfer_received">Transfer Received</option></select>'
+    +'<select id="ntr-subservice" class="fsel" style="margin-bottom:0"><option value="">All Sub-Services</option><option value="add_money">Add Money</option><option value="payout">Payout</option><option value="payout_fee">Payout Charge</option><option value="payout_refund">Payout Refund</option><option value="cash_deposit">Cash Deposit</option><option value="cash_deposit_fee">Cash Deposit Charge</option><option value="collection_fee">Top-up Charge</option><option value="transfer_sent">Transfer Sent</option><option value="transfer_received">Transfer Received</option></select>'
     +'</div>'
     +'<button class="btn-primary" onclick="generateNetworkTxnReport()" style="width:100%">📊 Generate Report</button>'
     +'<div id="ntr-summary" style="margin-top:12px"></div>'
@@ -5093,7 +5093,7 @@ async function showWalletAction(type){
       +'<button onclick="document.getElementById(\'wallet-action-panel\').style.display=\'none\'" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:.72rem">✕ Close</button>'
       +'</div>'
       +'<label class="flabel">Amount to Withdraw (₹)</label>'
-      +'<input class="finp" id="wd-amount" type="number" placeholder="Enter amount"/>'
+      +'<input class="finp" id="wd-amount" type="number" min="100" step="1" placeholder="Enter amount"/>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
       +[500,1000,2000,5000].map(function(a){
         return '<button onclick="document.getElementById(\'wd-amount\').value='+a+'" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.75rem">₹'+fmtS(a)+'</button>';
@@ -5102,13 +5102,11 @@ async function showWalletAction(type){
       +'<label class="flabel">Withdraw To</label>'
       +'<select class="fsel" id="wd-method" onchange="wdSync()">'
       +'<option value="bank">Bank Account (NEFT/IMPS)</option>'
-      +'<option value="upi">UPI ID</option>'
-      +'<option value="paytm">Paytm Wallet</option>'
       +'</select>'
       /* WITHDRAW_BANK_WEB */ +'<div id="wd-bank-box" style="margin-bottom:12px"><div style="font-size:.78rem;color:var(--muted2)">Loading your bank accounts…</div></div>'
       +'<div id="wd-upi-box" style="display:none"><label class="flabel">UPI ID / Wallet mobile</label><input class="finp" id="wd-upi" oninput="wdSync()" placeholder="name@bank or mobile number"/></div>'
       +'<input type="hidden" id="wd-account"/><input type="hidden" id="wd-ifsc"/>'
-      +'<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">⚠️ Withdrawal processed within 24 hours · Minimum ₹500 · RTAI verified</div>'
+      +'<div id="wd-quote-box" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">Enter an amount to see the charge. Min ₹100 · up to ₹2,00,000 per transaction · ₹5,00,000 per day.</div>'
       +'<button onclick="processWithdraw()" class="btn-primary" style="background:linear-gradient(135deg,var(--red),#dc2626)">Withdraw →</button>'
       +'</div>';
   }
@@ -5591,7 +5589,7 @@ function updateSubServices(){
   var subEl = document.getElementById('th-subsvc');
   if(!subEl) return;
   var SUB_SERVICES = {
-    wallet:     [['add_money','Add Money'],['payout','Payout'],['transfer_sent','Transfer Sent'],['transfer_received','Transfer Received'],['bank_verification','Bank Verification']],
+    wallet:     [['add_money','Add Money'],['payout','Payout'],['transfer_sent','Transfer Sent'],['transfer_received','Transfer Received'],['bank_verification','Bank Verification'],['payout_fee','Payout Charge'],['payout_refund','Payout Refund'],['cash_deposit','Cash Deposit'],['cash_deposit_fee','Cash Deposit Charge'],['collection_fee','Top-up Charge']],
     recharge:   [['Mobile Prepaid','Mobile Prepaid'],['Mobile Postpaid','Mobile Postpaid'],['DTH','DTH'],['Data Card','Data Card']],
     bbps:       [['Electricity','Electricity'],['Water','Water'],['Gas','Gas'],['Broadband','Broadband'],['Loan EMI','Loan EMI'],['Insurance','Insurance'],['Municipal Tax','Municipal Tax']],
     aeps:       [['cash_withdrawal','Cash Withdrawal'],['balance_enquiry','Balance Enquiry'],['mini_statement','Mini Statement'],['commission','Commission'],['Aadhaar Pay','Aadhaar Pay']],
@@ -11086,6 +11084,96 @@ function wdSync(){
     ifsc.value = '';
   }
 }
+</script>
+<script id="withdraw_payout_web">
+/* WITHDRAW_PAYOUT_WEB: real withdrawal through the BankMe Payout API */
+(function(){
+  var _qt = null;
+  function inr(n){ return '₹' + Number(n).toLocaleString('en-IN', {maximumFractionDigits: 2}); }
+  function setBox(text, ok){
+    var b = document.getElementById('wd-quote-box'); if(!b) return;
+    b.textContent = text;
+    b.style.color = ok === false ? 'var(--red)' : (ok === true ? 'var(--rtai)' : 'var(--gold)');
+  }
+  window.wdQuote = function(){
+    clearTimeout(_qt);
+    _qt = setTimeout(function(){
+      var el = document.getElementById('wd-amount'); if(!el) return;
+      var amt = parseInt(el.value, 10);
+      if(!amt){ setBox('Enter an amount to see the charge. Min ₹100 · up to ₹2,00,000 per transaction · ₹5,00,000 per day.'); return; }
+      authFetch(BACKEND_URL + '/payout/quote?amount=' + amt).then(function(r){ return r.json(); }).then(function(d){
+        if(!d || !d.success){ setBox((d && d.message) || 'Enter a whole amount from ₹100 to ₹2,00,000.', false); return; }
+        var bal = (CU && CU.wallet) || 0;
+        var msg = 'Charge ' + inr(d.fee) + ' (GST included) · Wallet debit ' + inr(d.totalDebit) + ' · Bank receives ' + inr(d.amount) + ' · Left today ' + inr(d.remainingToday);
+        if(d.totalDebit > bal){ setBox(msg + ' · Not enough balance (' + inr(bal) + ')', false); return; }
+        setBox(msg, true);
+      }).catch(function(){ setBox('Could not get the charge. Check your internet.', false); });
+    }, 250);
+  };
+  document.addEventListener('input', function(e){ if(e.target && e.target.id === 'wd-amount') window.wdQuote(); });
+  document.addEventListener('click', function(e){
+    var p = document.getElementById('wallet-action-panel');
+    if(p && p.contains(e.target) && e.target.tagName === 'BUTTON') setTimeout(window.wdQuote, 30);
+  });
+  var _key = null, _keyFor = '';
+  function keyFor(amount, bankId){
+    var f = amount + '|' + bankId;
+    if(f !== _keyFor){ _keyFor = f; _key = 'W' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+    return _key;
+  }
+  window.processWithdraw = async function(){
+    var amount = parseInt((document.getElementById('wd-amount') || {}).value, 10) || 0;
+    if(amount < 100 || amount > 200000){ toast('Enter a whole amount from ₹100 to ₹2,00,000', 'e'); return; }
+    var sel = document.getElementById('wd-bank-sel');
+    var bank = (window._wdBanks || [])[sel ? parseInt(sel.value, 10) : 0];
+    if(!bank){ toast('Add and verify a bank account in Profile first', 'e'); return; }
+    var bankId = bank._id || bank.id;
+    var q;
+    try { q = await (await authFetch(BACKEND_URL + '/payout/quote?amount=' + amount)).json(); }
+    catch(e){ toast('Could not get the charge. Try again.', 'e'); return; }
+    if(!q || !q.success){ toast((q && q.message) || 'Amount not allowed', 'e'); return; }
+    if(q.totalDebit > ((CU && CU.wallet) || 0)){ toast('Not enough balance. You need ' + inr(q.totalDebit) + ' (amount + charge).', 'e'); return; }
+    var tail = String(bank.accountNumber || '').slice(-4);
+    if(!confirm('Withdraw ' + inr(amount) + ' to ' + (bank.bankName || 'bank') + ' ••••' + tail + '?\n\nCharge (GST incl.): ' + inr(q.fee) + '\nWallet debit: ' + inr(q.totalDebit))) return;
+    var btn = document.querySelector('#wallet-action-panel button.btn-primary');
+    if(btn){ btn.disabled = true; btn.textContent = 'Submitting…'; }
+    var res;
+    try {
+      res = await (await authFetch(BACKEND_URL + '/payout/request', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({amount: amount, bankAccountId: bankId, idempotencyKey: keyFor(amount, bankId)})
+      })).json();
+    } catch(e){
+      if(btn){ btn.disabled = false; btn.textContent = 'Withdraw →'; }
+      toast('Network problem. Check Transaction History before trying again.', 'e'); return;
+    }
+    if(btn){ btn.disabled = false; btn.textContent = 'Withdraw →'; }
+    if(!res || !res.success){ toast((res && res.message) || 'Withdrawal failed', 'e'); return; }
+    if(typeof res.newBalance === 'number'){
+      CU.wallet = res.newBalance;
+      var chip = document.getElementById('wallet-chip'); if(chip) chip.textContent = '₹' + fmtN(CU.wallet);
+    }
+    _keyFor = '';
+    var p = res.payout || {};
+    var panel = document.getElementById('wallet-action-panel');
+    if(panel){
+      panel.textContent = '';
+      var box = document.createElement('div');
+      box.style.cssText = 'background:rgba(245,158,11,.1);border:1px solid var(--gold);border-radius:12px;padding:16px;text-align:center';
+      var l1 = document.createElement('div'); l1.style.cssText = 'font-size:1.8rem;margin-bottom:6px'; l1.textContent = '🕒';
+      var l2 = document.createElement('div'); l2.style.cssText = 'color:var(--gold);font-weight:700'; l2.textContent = inr(p.amount || amount) + ' withdrawal requested';
+      var l3 = document.createElement('div'); l3.style.cssText = 'font-size:.75rem;color:var(--muted2);margin-top:6px;line-height:1.6';
+      l3.textContent = 'To ' + (p.bank || bank.bankName || 'your bank') + ' ' + (p.account || ('••••' + tail)) + ' · Charge ' + inr(p.fee != null ? p.fee : q.fee) + ' (GST incl.) · Wallet debited ' + inr(p.totalDebit != null ? p.totalDebit : q.totalDebit) + ' · Ref ' + (p.payoutId || '') + '. It is sent to your bank after approval. If it is rejected, the full amount and charge come back to your wallet.';
+      var done = document.createElement('button');
+      done.textContent = 'Done ✓';
+      done.style.cssText = 'margin-top:10px;padding:8px 18px;border-radius:9px;background:var(--gold);border:none;color:#000;cursor:pointer;font-weight:700;font-size:.82rem';
+      done.onclick = function(){ renderWallet(); };
+      box.appendChild(l1); box.appendChild(l2); box.appendChild(l3); box.appendChild(done);
+      panel.appendChild(box);
+    }
+    toast('Withdrawal requested ✅', 's');
+  };
+})();
 </script>
 </body>
 </html>
