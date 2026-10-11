@@ -10970,6 +10970,61 @@ function removeBankAccount(id, last4){
     .catch(function(){ toast('Network error. Please try again.','e'); });
 }
 </script>
+<script id="back_button_web">
+/* BACK_BUTTON_WEB: browser Back moves between BankMe screens; from the home screen it asks before leaving. */
+(function(){
+  var origGo = window.goPage, origOpen = window.openService, origShow = window.showApp;
+  var cur = 'dashboard', suppress = false, armed = false;
+  function showOnly(pg){
+    var t = document.getElementById('page-' + pg);
+    if(!t || !t.parentNode) return;
+    Array.prototype.forEach.call(t.parentNode.children, function(el){
+      if(el !== t && el.id && el.id.indexOf('page-') === 0) el.style.display = 'none';
+    });
+  }
+  function push(pg, svc){
+    try{ history.pushState({ bm: 1, page: pg, svc: svc || null }, ''); }catch(e){}
+  }
+  window.showApp = function(){
+    var r = origShow.apply(this, arguments);
+    if(!armed){
+      armed = true; cur = 'dashboard';
+      try{ history.replaceState({ root: 1 }, ''); }catch(e){}
+      push('dashboard');
+    }
+    return r;
+  };
+  window.goPage = function(pg){
+    var r = origGo.apply(this, arguments);
+    if(!suppress && window.CU && armed && pg !== cur){ cur = pg; push(pg); }
+    return r;
+  };
+  window.openService = function(id){
+    var r = origOpen.apply(this, arguments);
+    if(!suppress && window.CU && armed){ push(cur, id); }
+    return r;
+  };
+  window.addEventListener('popstate', function(e){
+    if(!window.CU || !armed) return;
+    var st = e.state;
+    if(st && st.bm){
+      suppress = true;
+      try{ cur = st.page; origGo(st.page); showOnly(st.page); }catch(err){ console.warn('Back navigation error:', err); }
+      suppress = false;
+      return;
+    }
+    // reached the guard entry: the next Back would leave the app
+    if(window.confirm('Leave BankMe? You will stay logged in.')){
+      armed = false; history.back();
+    } else {
+      suppress = true; cur = 'dashboard';
+      push('dashboard');
+      try{ origGo('dashboard'); showOnly('dashboard'); }catch(err){}
+      suppress = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>
 
