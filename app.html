@@ -6615,8 +6615,10 @@ function submitBankAccount(){
     btn.disabled = false; btn.textContent = 'Verify & Add Bank (₹5 charge) →';
     if(d && d.success){
       toast(d.message || '✅ Bank account added', 's');
+      /* BANK_WALLET_REFRESH */ if(d.charged){ CU.wallet = Math.max(0, (Number(CU.wallet)||0) - Number(d.charged)); }
       toggleBankForm();
       loadBankAccounts();
+      if(d.charged && typeof renderProfile==='function'){ setTimeout(function(){ renderProfile(true); }, 300); }
     } else {
       err.textContent = d.message || 'Failed to add bank account';
     }
