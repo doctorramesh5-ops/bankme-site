@@ -11660,6 +11660,103 @@ function wdSync(){
   };
 })();
 </script>
+<script id="TOPUP_CHECKOUT_WEB">
+(function(){
+  var CARD_TYPES=[['credit_visa','Credit Card - Visa'],['credit_master','Credit Card - Mastercard'],['credit_rupay','Credit Card - RuPay'],['credit_amex','Credit Card - American Express'],['credit_diners','Credit Card - Diners'],['credit_corp','Corporate Credit Card'],['debit_visa_master','Debit Card - Visa / Mastercard'],['debit_rupay','Debit Card - RuPay']];
+  var sel=null; // 'upi' | 'card' | 'net'
+  function money(n){ return '₹'+Number(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+  function methodKey(){
+    if(sel==='upi') return 'upi';
+    if(sel==='net') return 'netbanking';
+    if(sel==='card'){ var e=document.getElementById('tu-card'); return e?e.value:'credit_visa'; }
+    return null;
+  }
+  function box(){ return document.getElementById('tu-fee-box'); }
+  var tmr=null;
+  function refresh(){
+    clearTimeout(tmr);
+    tmr=setTimeout(async function(){
+      var b=box(); if(!b) return;
+      var m=methodKey(), a=parseFloat((document.getElementById('wa-amount')||{}).value)||0;
+      if(!m){ b.innerHTML='<span style="color:var(--muted2)">Choose UPI, Card or Net Banking above.</span>'; return; }
+      if(a<10){ b.innerHTML='<span style="color:var(--muted2)">Enter amount (minimum ₹10) to see the charge.</span>'; return; }
+      try{
+        var r=await authFetch(BACKEND_URL+'/wallet/topup-quote?method='+encodeURIComponent(m)+'&amount='+a); var d=await r.json();
+        if(!d.success){ b.innerHTML='<span style="color:var(--red)">'+(d.message||'Cannot calculate')+'</span>'; return; }
+        var q=d.quote;
+        b.innerHTML='<div style="display:flex;justify-content:space-between"><span>Amount added to wallet</span><b>'+money(q.walletCredit)+'</b></div>'
+          +'<div style="display:flex;justify-content:space-between"><span>Top-up charge (incl. GST)</span><b>'+(q.fee===0?'FREE':money(q.fee))+'</b></div>'
+          +'<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span>You pay</span><b style="color:var(--rtai)">'+money(q.totalPayable)+'</b></div>';
+      }catch(e){ b.innerHTML='<span style="color:var(--muted2)">Charge will be shown at payment.</span>'; }
+    },250);
+  }
+  var origSel=window.selectPayMethod;
+  window.selectPayMethod=function(id){
+    if(['upi','card','net'].indexOf(id)<0){ if(typeof toast==='function') toast('This method is not available for wallet top-up yet. Use UPI, Card or Net Banking.','i'); return; }
+    sel=id;
+    try{ origSel(id); }catch(e){}
+    var det=document.getElementById('pay-method-detail'); if(!det) return;
+    var inner='';
+    if(id==='card'){
+      inner='<label class="flabel">Card type</label><select class="fsel" id="tu-card" onchange="window.__tuRefresh()">'+CARD_TYPES.map(function(c){return '<option value="'+c[0]+'">'+c[1]+'</option>';}).join('')+'</select>'
+        +'<div style="font-size:.7rem;color:var(--muted2);margin:4px 0 8px">You will enter card details on the secure payment screen. Charge depends on card type.</div>';
+    } else if(id==='net'){
+      inner='<div style="font-size:.78rem;color:var(--muted2);margin-bottom:8px">You will choose your bank on the secure payment screen.</div>';
+    } else {
+      inner='<div style="font-size:.78rem;color:var(--muted2);margin-bottom:8px">UPI top-up is FREE. Limit ₹1,00,000 per top-up.</div>';
+    }
+    det.innerHTML=inner+'<div id="tu-fee-box" style="background:var(--bg3);border-radius:8px;padding:10px;font-size:.8rem"></div>';
+    refresh();
+  };
+  window.__tuRefresh=refresh;
+  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='wa-amount') refresh(); });
+  var origShow=window.showWalletAction;
+  window.showWalletAction=function(t){ if(t==='add') sel=null; return origShow.apply(this,arguments); };
+
+  window.processAddMoney=async function(){
+    var amount=parseFloat((document.getElementById('wa-amount')||{}).value)||0;
+    var m=methodKey();
+    if(amount<10){ toast('Minimum top-up is ₹10','e'); return; }
+    if(!m){ toast('Choose UPI, Card or Net Banking','e'); return; }
+    var panel=document.getElementById('wallet-action-panel');
+    var spin=function(t){ if(panel) panel.innerHTML='<div style="text-align:center;padding:20px"><div style="width:40px;height:40px;border:4px solid rgba(16,185,129,.2);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div><p style="color:var(--green)">'+t+'</p></div>'; };
+    spin('Creating secure payment order…');
+    var d;
+    try{
+      var r=await authFetch(BACKEND_URL+'/wallet/create-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:amount,method:m})});
+      d=await r.json();
+    }catch(e){ toast('Network error. Try again.','e'); showWalletAction('add'); return; }
+    if(!d.success){ toast('Could not start payment: '+(d.message||'Please try again'),'e'); showWalletAction('add'); return; }
+    var q=d.quote;
+    var mm={upi:false,card:false,netbanking:false,wallet:false,emi:false,paylater:false};
+    if(m==='upi') mm.upi=true; else if(m==='netbanking') mm.netbanking=true; else mm.card=true;
+    var rzp=new Razorpay({
+      key:d.keyId, amount:d.order.amount, currency:'INR', name:'BankMe',
+      description:'Wallet top-up '+money(q.walletCredit)+(q.fee?' + charge '+money(q.fee):''),
+      order_id:d.order.id, method:mm,
+      handler:async function(resp){
+        spin('Verifying payment…');
+        try{
+          var vr=await authFetch(BACKEND_URL+'/wallet/verify-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({razorpay_order_id:resp.razorpay_order_id,razorpay_payment_id:resp.razorpay_payment_id,razorpay_signature:resp.razorpay_signature})});
+          var vd=await vr.json();
+          if(vd.success){
+            CU.wallet=vd.newBalance; var chip=document.getElementById('wallet-chip'); if(chip) chip.textContent='₹'+fmtN(CU.wallet);
+            var added=(vd.credited!=null?vd.credited:q.walletCredit), fee=(vd.fee!=null?vd.fee:q.fee);
+            if(panel) panel.innerHTML='<div style="background:rgba(16,185,129,.1);border:1px solid var(--green);border-radius:12px;padding:16px;text-align:center"><div style="font-size:1.8rem;margin-bottom:6px">✅</div><div style="color:var(--green);font-weight:700">'+money(added)+' added to wallet</div><div style="font-size:.78rem;color:var(--muted2);margin-top:4px">Charge '+(fee?money(fee):'FREE')+' · Paid '+money(d.order.amount/100)+'</div><div style="font-size:.72rem;color:var(--muted2);margin-top:4px">Ref: '+resp.razorpay_payment_id+'</div><button onclick="renderWallet()" style="margin-top:10px;padding:8px 18px;border-radius:9px;background:var(--green);border:none;color:#000;cursor:pointer;font-weight:700;font-size:.82rem">Done ✓</button></div>';
+            toast(money(added)+' added to wallet ✅','s');
+          } else {
+            if(panel) panel.innerHTML='<div style="background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:12px;padding:16px;text-align:center"><div style="color:var(--red);font-weight:700">⚠️ Payment could not be confirmed</div><div style="font-size:.78rem;color:var(--muted2);margin-top:6px">'+(vd.message||'Please contact support if money was deducted.')+'</div><div style="font-size:.72rem;color:var(--muted2);margin-top:4px">Ref: '+resp.razorpay_payment_id+'</div></div>';
+          }
+        }catch(e){ toast('Network error verifying payment. Contact support if charged. Ref '+resp.razorpay_payment_id,'e'); }
+      },
+      prefill:{name:CU.name||'',contact:CU.phone||'',email:CU.email||''},
+      theme:{color:'#00d4aa'},
+      modal:{ondismiss:function(){ toast('Payment cancelled','i'); showWalletAction('add'); }}
+    });
+    rzp.open();
+  };
+})();
+</script>
 </body>
 </html>
 
