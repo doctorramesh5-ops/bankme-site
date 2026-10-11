@@ -5478,7 +5478,7 @@ async function renderTxnHistory(){
       var data2 = await res2.json();
       TXN_HISTORY = (data2.transactions||[]).map(function(t){
         return { id: t._id, txnId: t._id, service: t.mainService, subService: t.subService, amount: t.type==='credit'?t.amount:-t.amount, date: t.createdAt, status: t.status, title: (t.subService||'Transaction').replace(/_/g,' '), rtaiVerified: true };
-      });
+      }).reverse(); /* HISTORY_ORDER_WEB: server is newest-first, screens expect oldest-first */
     }
   }catch(e){ console.log('Failed to load real transactions:', e); }
 
@@ -5591,10 +5591,10 @@ function updateSubServices(){
   var subEl = document.getElementById('th-subsvc');
   if(!subEl) return;
   var SUB_SERVICES = {
-    wallet:     [['add_money','Add Money'],['payout','Payout'],['transfer_sent','Transfer Sent'],['transfer_received','Transfer Received']],
+    wallet:     [['add_money','Add Money'],['payout','Payout'],['transfer_sent','Transfer Sent'],['transfer_received','Transfer Received'],['bank_verification','Bank Verification']],
     recharge:   [['Mobile Prepaid','Mobile Prepaid'],['Mobile Postpaid','Mobile Postpaid'],['DTH','DTH'],['Data Card','Data Card']],
     bbps:       [['Electricity','Electricity'],['Water','Water'],['Gas','Gas'],['Broadband','Broadband'],['Loan EMI','Loan EMI'],['Insurance','Insurance'],['Municipal Tax','Municipal Tax']],
-    aeps:       [['Cash Withdrawal','Cash Withdrawal'],['Balance Enquiry','Balance Enquiry'],['Mini Statement','Mini Statement'],['Aadhaar Pay','Aadhaar Pay']],
+    aeps:       [['cash_withdrawal','Cash Withdrawal'],['balance_enquiry','Balance Enquiry'],['mini_statement','Mini Statement'],['commission','Commission'],['Aadhaar Pay','Aadhaar Pay']],
     dmt:        [['IMPS Transfer','IMPS Transfer'],['NEFT Transfer','NEFT Transfer'],['Account Verify','Account Verify']],
     upicashin:  [['UPI Collect','UPI Collect'],['QR Collection','QR Collection']],
     upicashout: [['UPI Pay','UPI Pay'],['UPI Transfer','UPI Transfer']],
