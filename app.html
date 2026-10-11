@@ -10303,7 +10303,8 @@ async function aepsActivationOpen(){
     + inp('act-account', 'Bank Account Number', 'Account number', 'type="tel" value="' + aepsEsc(acc) + '"')
     + inp('act-ifsc', 'IFSC Code', 'e.g. HDFC0001234', 'maxlength="11" style="text-transform:uppercase" value="' + aepsEsc(ifsc) + '"')
     + '<datalist id="act-devs">' + AEPS_DEVICES.map(function(d){ return '<option value="' + aepsEsc(d.label) + '">'; }).join('') + '</datalist>'
-    + inp('act-model', 'Biometric Device Model', 'e.g. Morpho MSO 1300 E3 L1', 'list="act-devs"')
+    + '<label class="flabel">Biometric Device Brand</label><select class="fsel" id="act-brand"><option value="">-- Select Brand --</option><option>Mantra</option><option>Morpho</option><option>Startek</option><option>Precision</option><option>Other</option></select>'
+    + inp('act-model', 'Device Model Number (optional)', 'e.g. MFS110 or MSO 1300 E3', '')
     + inp('act-serial', 'Device Serial Number', 'Printed on the device')
     + inp('act-aadhaar', 'Your Aadhaar Number', '12-digit Aadhaar', 'type="tel" maxlength="12" style="letter-spacing:3px;font-weight:600" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"')
     + '<label class="flabel">Shop Type</label><select class="fsel" id="act-shop">' + aepsActOpts(AEPS_ACT.shops, '-- Select Shop Type --') + '</select>'
@@ -10893,6 +10894,25 @@ function showAssignTab(type){
     if (/ekyc/i.test(r.msg || "")) { return aepsEkycStart(); }
     if (r.code === 1714 || /kyc fail/i.test(r.msg || "")) { return aepsDailyFailChoice(); }
     return aepsFail(2, r.msg || "BankMe daily verification failed", "aepsOperatorDaily()");
+  };
+})();
+</script>
+<script id="device-brand-patch">
+(function(){
+  var _collect = window.aepsActCollect, _validate = window.aepsActValidate;
+  window.aepsActCollect = function(){
+    var v = _collect();
+    var b = aepsActVal("act-brand"), m = aepsActVal("act-model");
+    if (b === "Other") b = "";
+    v.brand = b; v.modelNo = m;
+    v.model = (b + (b && m ? " " : "") + m).trim();
+    return v;
+  };
+  window.aepsActValidate = function(v){
+    var b = aepsActVal("act-brand");
+    if (!b) return "Select your biometric device brand";
+    if (b === "Other" && !aepsActVal("act-model")) return "Enter your device model";
+    return _validate(v);
   };
 })();
 </script>
