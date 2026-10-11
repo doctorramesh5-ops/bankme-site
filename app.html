@@ -4623,6 +4623,7 @@ function dmtRenderAddRecipientForm(){
     +'<option value="">Select Bank</option>'
     +DMT_BANKS.map(function(b){return '<option value="'+b+'">'+b+'</option>';}).join('')
     +'</select>'
+    +'<div style="font-size:.72rem;color:var(--muted2);background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">&#128274; The bank account is verified with the bank before saving. Verification fee: &#8377;5 (GST included).</div>'
     +'<button class="btn-primary" id="dmt-add-recipient-btn" onclick="dmtAddRecipient()" style="background:linear-gradient(135deg,var(--blue),var(--cyan))">Add Recipient →</button>';
 }
 
@@ -4648,14 +4649,16 @@ async function dmtAddRecipient(){
   var btn=document.getElementById('dmt-add-recipient-btn');
   if(btn){ btn.disabled=true; btn.textContent='Adding…'; }
   try{
-    var r=await fetch(BANKME_API+'/eko/dmt/add-recipient/'+DMT.senderMobile,{
+    var r=await authFetch(BANKME_API+'/eko/dmt/add-recipient/'+DMT.senderMobile,{
       method:'POST', headers:{'content-type':'application/json'},
       body:JSON.stringify({recipient_mobile:mobile, recipient_name:name, ifsc:ifsc, account:account, bank:bank, agent_phone:dmtAgentPhone()})
     });
     var j=await r.json();
     if(j&&j.data&&j.data.data&&j.data.data.recipient_id){
       DMT.recipientId=j.data.data.recipient_id;
-      dmtRenderStep3({name:name,account:account,bank:bank,ifsc:ifsc});
+      /* DMT_BANK_VERIFY_WEB */ var vh=(j.verified&&j.verified.holder)||name;
+      if(j.verified&&j.verified.holder){ toast('Bank account verified: '+j.verified.holder+(j.fee&&j.fee.due?' (Rs '+j.fee.due+' fee will be deducted from your next wallet credit)':''),'s'); }
+      dmtRenderStep3({name:vh,account:account,bank:(j.verified&&j.verified.bank)||bank,ifsc:ifsc});
     } else if(((j&&j.data&&j.data.message)||'').toLowerCase().indexOf('already registered')!==-1){
       await dmtFetchRecipients();
       var match=DMT.savedRecipients.find(function(x){return x.account===account;});
