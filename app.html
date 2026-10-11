@@ -11175,6 +11175,196 @@ function wdSync(){
   };
 })();
 </script>
+<script id="admin_money_web">
+/* ADMIN_MONEY_WEB: admin console page for Payout requests and Cash Deposits (approve / reject, receipts, income) */
+(function(){
+  var _orig = goPage, tab = 'payouts', status = 'pending';
+  function inr(n){ return '₹' + Number(n || 0).toLocaleString('en-IN', {maximumFractionDigits: 2}); }
+  function el(tag, css, text){ var e = document.createElement(tag); if(css) e.style.cssText = css; if(text != null) e.textContent = text; return e; }
+  function api(path, body){
+    var o = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : undefined;
+    return authFetch(BACKEND_URL + path, o).then(function(r){ return r.json(); });
+  }
+  function pageEl(){
+    var p = document.getElementById('page-adminmoney');
+    if(!p){
+      var ref = document.getElementById('page-dashboard');
+      if(!ref) return null;
+      p = document.createElement('div'); p.id = 'page-adminmoney'; p.className = 'page'; p.style.display = 'none';
+      ref.parentNode.insertBefore(p, ref.nextSibling);
+    }
+    return p;
+  }
+  function card(label, value, color){
+    var c = el('div', 'background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center');
+    c.appendChild(el('div', 'font-size:1.05rem;font-weight:800;color:' + (color || 'var(--text)'), value));
+    c.appendChild(el('div', 'font-size:.68rem;color:var(--muted2);margin-top:3px', label));
+    return c;
+  }
+  function btn(text, bg, fg, fn){
+    var b = el('button', 'padding:7px 12px;border-radius:8px;border:none;cursor:pointer;font-weight:700;font-size:.75rem;background:' + bg + ';color:' + fg, text);
+    b.onclick = fn; return b;
+  }
+  function line(k, v){
+    var d = el('div', 'font-size:.74rem;color:var(--muted2);margin-top:3px;word-break:break-all');
+    d.appendChild(document.createTextNode(k + ': '));
+    d.appendChild(el('span', 'color:var(--text)', v == null || v === '' ? '—' : String(v)));
+    return d;
+  }
+  function stColor(s){ return s === 'pending' || s === 'processing' ? 'var(--gold)' : (s === 'success' || s === 'approved' ? 'var(--rtai)' : 'var(--red)'); }
+  function render(){
+    var p = pageEl(); if(!p) return;
+    p.textContent = '';
+    p.appendChild(el('div', 'font-size:1.15rem;font-weight:800;color:var(--red);margin-bottom:4px', '💸 Payouts & Cash Deposits'));
+    p.appendChild(el('div', 'font-size:.78rem;color:var(--muted2);margin-bottom:14px', 'Pay withdrawals from the company bank, then mark them paid. Check the bank statement before approving a cash deposit.'));
+    var tabs = el('div', 'display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap');
+    [['payouts', '↙ Payout requests'], ['cash', '🏦 Cash deposits']].forEach(function(t){
+      var on = tab === t[0];
+      var b = el('button', 'padding:8px 14px;border-radius:9px;cursor:pointer;font-weight:700;font-size:.8rem;border:1px solid ' + (on ? 'var(--rtai)' : 'var(--border)') + ';background:' + (on ? 'rgba(0,212,170,.12)' : 'var(--bg3)') + ';color:' + (on ? 'var(--rtai)' : 'var(--muted2)'), t[1]);
+      b.onclick = function(){ tab = t[0]; status = 'pending'; render(); };
+      tabs.appendChild(b);
+    });
+    p.appendChild(tabs);
+    var sumBox = el('div', 'display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px');
+    p.appendChild(sumBox);
+    var fl = el('div', 'display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap');
+    (tab === 'payouts' ? ['pending', 'success', 'failed', 'all'] : ['pending', 'approved', 'rejected', 'all']).forEach(function(s){
+      var on = status === s;
+      var b = el('button', 'padding:5px 11px;border-radius:7px;cursor:pointer;font-size:.74rem;border:1px solid var(--border2);background:' + (on ? 'var(--rtai)' : 'var(--bg3)') + ';color:' + (on ? '#000' : 'var(--muted2)'), s.charAt(0).toUpperCase() + s.slice(1));
+      b.onclick = function(){ status = s; render(); };
+      fl.appendChild(b);
+    });
+    p.appendChild(fl);
+    var list = el('div', '');
+    list.appendChild(el('div', 'color:var(--muted2);font-size:.8rem', 'Loading…'));
+    p.appendChild(list);
+    var isP = tab === 'payouts';
+    api(isP ? '/admin/payouts-summary' : '/admin/cash-deposits-summary').then(function(d){
+      var s = d && d.summary; if(!s) return;
+      if(isP){
+        sumBox.appendChild(card('Pending requests', s.pending || 0, 'var(--gold)'));
+        sumBox.appendChild(card('Pending amount', inr(s.pendingAmount), 'var(--gold)'));
+        sumBox.appendChild(card('Paid out', inr(s.amountPaid), 'var(--rtai)'));
+        sumBox.appendChild(card('Payout charges earned', inr(s.feesEarned), 'var(--rtai)'));
+        sumBox.appendChild(card('GST in charges', inr(s.gstInFees)));
+        sumBox.appendChild(card('Income before GST', inr(s.feesBeforeGst), 'var(--rtai)'));
+      } else {
+        sumBox.appendChild(card('Waiting approval', s.pending || 0, 'var(--gold)'));
+        sumBox.appendChild(card('Waiting amount', inr(s.pendingAmount), 'var(--gold)'));
+        sumBox.appendChild(card('Approved total', inr(s.amountApproved), 'var(--rtai)'));
+        sumBox.appendChild(card('Deposit charges earned', inr(s.feesEarned), 'var(--rtai)'));
+        sumBox.appendChild(card('GST in charges', inr(s.gstInFees)));
+        sumBox.appendChild(card('Income before GST', inr(s.feesBeforeGst), 'var(--rtai)'));
+      }
+    }).catch(function(){});
+    api(isP ? '/admin/payouts?status=' + status : '/admin/cash-deposits?status=' + status).then(function(d){
+      list.textContent = '';
+      var rows = (d && (d.payouts || d.deposits)) || [];
+      if(!d || !d.success){ list.appendChild(el('div', 'color:var(--red);font-size:.8rem', (d && (d.message || d.error)) || 'Could not load.')); return; }
+      if(!rows.length){ list.appendChild(el('div', 'color:var(--muted2);font-size:.8rem;padding:14px;text-align:center', 'Nothing here.')); return; }
+      rows.forEach(function(r){ list.appendChild(isP ? payoutCard(r) : cashCard(r)); });
+    }).catch(function(){ list.textContent = 'Could not load. Try again.'; });
+  }
+  function head(r, amountText, st){
+    var h = el('div', 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center');
+    h.appendChild(el('div', 'font-weight:800;font-size:.95rem', amountText));
+    h.appendChild(el('div', 'font-size:.72rem;font-weight:700;color:' + stColor(st), String(st).toUpperCase()));
+    return h;
+  }
+  function box(){ return el('div', 'background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px'); }
+  function when(t){ try { return new Date(t).toLocaleString('en-IN'); } catch(e){ return ''; } }
+  function payoutCard(r){
+    var c = box();
+    c.appendChild(head(r, inr(r.amount) + '  (charge ' + inr(r.fee) + ', wallet debit ' + inr(r.totalDebit) + ')', r.status));
+    c.appendChild(line('User', (r.user || '') + ' · ' + r.phone + ' · ' + (r.role || '')));
+    c.appendChild(line('Pay to', (r.holder || '') + ' · ' + (r.bank || '')));
+    c.appendChild(line('Account', r.account)); c.appendChild(line('IFSC', r.ifsc));
+    c.appendChild(line('Ref / mode', (r.payoutId || '') + ' · ' + (r.mode || '')));
+    c.appendChild(line('Requested', when(r.createdAt)));
+    if(r.utr) c.appendChild(line('UTR', r.utr));
+    if(r.reason) c.appendChild(line('Reason', r.reason));
+    if(r.status === 'pending' || r.status === 'processing'){
+      var row = el('div', 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap');
+      row.appendChild(btn('✓ Mark paid (enter UTR)', 'var(--rtai)', '#000', function(){
+        var utr = prompt('Pay ' + inr(r.amount) + ' to ' + r.holder + ' (' + r.account + ', ' + r.ifsc + ') from the company bank first.\n\nEnter the bank UTR / reference number:');
+        if(!utr) return;
+        api('/admin/payouts/' + r.id + '/success', {utr: utr.trim()}).then(function(d){ toast(d.success ? 'Marked paid ✅' : (d.message || d.error || 'Failed'), d.success ? 's' : 'e'); render(); });
+      }));
+      row.appendChild(btn('✕ Reject & refund', 'var(--red)', '#fff', function(){
+        var why = prompt('Reason for rejecting (the user will see this). The amount and charge will be refunded to the wallet:');
+        if(!why) return;
+        api('/admin/payouts/' + r.id + '/reject', {reason: why.trim()}).then(function(d){ toast(d.success ? 'Rejected and refunded' : (d.message || d.error || 'Failed'), d.success ? 's' : 'e'); render(); });
+      }));
+      c.appendChild(row);
+    }
+    return c;
+  }
+  function viewReceipt(id){
+    api('/cash-deposit/receipt/' + id).then(function(d){
+      if(!d || !d.success){ toast((d && d.message) || 'Receipt not found', 'e'); return; }
+      try {
+        var bin = atob(String(d.data).split(',')[1]), arr = new Uint8Array(bin.length);
+        for(var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        window.open(URL.createObjectURL(new Blob([arr], {type: d.mime})), '_blank');
+      } catch(e){ toast('Could not open receipt', 'e'); }
+    });
+  }
+  function cashCard(r){
+    var c = box();
+    c.appendChild(head(r, inr(r.amount) + '  (charge ' + inr(r.fee) + ', wallet gets ' + inr(r.netCredit) + ')', r.status));
+    c.appendChild(line('User', (r.user || '') + ' · ' + r.phone + ' · ' + (r.role || '')));
+    c.appendChild(line('Deposited into', (r.bank || '') + ' · A/c ' + (r.toAccount || '') + ' · ' + (r.toIfsc || '')));
+    c.appendChild(line('Branch', r.branch));
+    c.appendChild(line('Deposit date & time', when(r.depositAt)));
+    c.appendChild(line(r.refType || 'Reference', r.refNo));
+    c.appendChild(line('Submitted', when(r.createdAt)));
+    if(r.reason) c.appendChild(line('Reason', r.reason));
+    var row = el('div', 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap');
+    row.appendChild(btn('🧾 View receipt', 'var(--bg3)', 'var(--text)', function(){ viewReceipt(r.id); }));
+    if(r.status === 'pending'){
+      row.appendChild(btn('✓ Approve & credit wallet', 'var(--rtai)', '#000', function(){
+        if(!confirm('Did you see ' + inr(r.amount) + ' (ref ' + r.refNo + ') in the ' + r.bank + ' account ' + r.toAccount + '?\n\nOK adds ' + inr(r.netCredit) + ' to the wallet of ' + r.phone + '.')) return;
+        api('/admin/cash-deposits/' + r.id + '/approve', {}).then(function(d){ toast(d.success ? 'Approved — wallet credited ✅' : (d.message || d.error || 'Failed'), d.success ? 's' : 'e'); render(); });
+      }));
+      row.appendChild(btn('✕ Reject', 'var(--red)', '#fff', function(){
+        var why = prompt('Reason for rejecting (the user will see this):');
+        if(!why) return;
+        api('/admin/cash-deposits/' + r.id + '/reject', {reason: why.trim()}).then(function(d){ toast(d.success ? 'Rejected' : (d.message || d.error || 'Failed'), d.success ? 's' : 'e'); render(); });
+      }));
+    }
+    c.appendChild(row);
+    return c;
+  }
+  goPage = function(pg){
+    var p = document.getElementById('page-adminmoney'), nb = document.getElementById('nb-adminmoney');
+    if(pg === 'adminmoney'){
+      _orig('dashboard');
+      var dash = document.getElementById('page-dashboard'); if(dash) dash.style.display = 'none';
+      if(!pageEl()) return;
+      document.getElementById('page-adminmoney').style.display = 'block';
+      document.querySelectorAll('.nb.on').forEach(function(n){ n.className = 'nb'; });
+      if(nb) nb.className = 'nb on';
+      render(); return;
+    }
+    if(p) p.style.display = 'none';
+    if(nb) nb.className = 'nb';
+    _orig(pg);
+  };
+  setInterval(function(){
+    try {
+      var has = document.getElementById('nb-adminmoney');
+      var isAdmin = typeof CU !== 'undefined' && CU && CU.role === 'admin';
+      if(isAdmin && !has){
+        var ref = document.getElementById('nb-wallet') || document.getElementById('nb-dashboard');
+        if(!ref) return;
+        var b = document.createElement('button'); b.className = 'nb'; b.id = 'nb-adminmoney'; b.textContent = '💸 Payouts & Deposits';
+        b.onclick = function(){ goPage('adminmoney'); };
+        ref.parentNode.insertBefore(b, ref);
+      } else if(!isAdmin && has){ has.remove(); }
+    } catch(e){}
+  }, 1500);
+})();
+</script>
 </body>
 </html>
 
