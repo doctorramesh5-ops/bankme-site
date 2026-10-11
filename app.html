@@ -5100,19 +5100,19 @@ async function showWalletAction(type){
       }).join('')
       +'</div>'
       +'<label class="flabel">Withdraw To</label>'
-      +'<select class="fsel" id="wd-method">'
+      +'<select class="fsel" id="wd-method" onchange="wdSync()">'
       +'<option value="bank">Bank Account (NEFT/IMPS)</option>'
       +'<option value="upi">UPI ID</option>'
       +'<option value="paytm">Paytm Wallet</option>'
       +'</select>'
-      +'<label class="flabel">Bank Account / UPI ID</label>'
-      +'<input class="finp" id="wd-account" placeholder="Account number or UPI ID"/>'
-      +'<label class="flabel">IFSC Code (for Bank)</label>'
-      +'<input class="finp" id="wd-ifsc" placeholder="e.g. SBIN0001234"/>'
+      /* WITHDRAW_BANK_WEB */ +'<div id="wd-bank-box" style="margin-bottom:12px"><div style="font-size:.78rem;color:var(--muted2)">Loading your bank accounts…</div></div>'
+      +'<div id="wd-upi-box" style="display:none"><label class="flabel">UPI ID / Wallet mobile</label><input class="finp" id="wd-upi" oninput="wdSync()" placeholder="name@bank or mobile number"/></div>'
+      +'<input type="hidden" id="wd-account"/><input type="hidden" id="wd-ifsc"/>'
       +'<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.75rem;color:var(--gold)">⚠️ Withdrawal processed within 24 hours · Minimum ₹500 · RTAI verified</div>'
       +'<button onclick="processWithdraw()" class="btn-primary" style="background:linear-gradient(135deg,var(--red),#dc2626)">Withdraw →</button>'
       +'</div>';
   }
+  if(type==='withdraw' && typeof wdLoadBanks==='function'){ wdLoadBanks(); }
   // Scroll to panel
   panel.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -11024,6 +11024,68 @@ function removeBankAccount(id, last4){
     }
   });
 })();
+</script>
+<script id="withdraw_bank_web">
+/* WITHDRAW_BANK_WEB: withdrawal uses the verified bank accounts saved in Profile */
+window._wdBanks = [];
+function wdLoadBanks(){
+  var box = document.getElementById('wd-bank-box');
+  if(!box) return;
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/bank-accounts')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var list = ((d && d.accounts) || []).filter(function(a){ return a.verificationStatus === 'verified'; });
+      window._wdBanks = list;
+      box.textContent = '';
+      if(!list.length){
+        var msg = document.createElement('div');
+        msg.style.cssText = 'font-size:.78rem;color:var(--gold);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px';
+        msg.appendChild(document.createTextNode('No verified bank account yet. '));
+        var link = document.createElement('a');
+        link.textContent = 'Add and verify one in Profile →';
+        link.style.cssText = 'color:var(--rtai);cursor:pointer;font-weight:600';
+        link.onclick = function(){ goPage('profile'); };
+        msg.appendChild(link);
+        box.appendChild(msg);
+        wdSync();
+        return;
+      }
+      var lab = document.createElement('label');
+      lab.className = 'flabel'; lab.textContent = 'Withdraw to (your Profile bank account)';
+      var sel = document.createElement('select');
+      sel.className = 'fsel'; sel.id = 'wd-bank-sel'; sel.onchange = wdSync;
+      list.forEach(function(a, i){
+        var o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = (a.accountHolderName || 'Account') + ' · ' + (a.bankName || '') + ' · ••••' + String(a.accountNumber || '').slice(-4) + ' · ' + (a.ifsc || '');
+        sel.appendChild(o);
+      });
+      box.appendChild(lab); box.appendChild(sel);
+      wdSync();
+    })
+    .catch(function(){
+      box.textContent = 'Could not load your bank accounts. Please close and open Withdraw again.';
+    });
+}
+function wdSync(){
+  var m = (document.getElementById('wd-method') || {}).value || 'bank';
+  var bankBox = document.getElementById('wd-bank-box'), upiBox = document.getElementById('wd-upi-box');
+  var acc = document.getElementById('wd-account'), ifsc = document.getElementById('wd-ifsc');
+  if(!acc || !ifsc) return;
+  if(m === 'bank'){
+    if(bankBox) bankBox.style.display = 'block';
+    if(upiBox) upiBox.style.display = 'none';
+    var sel = document.getElementById('wd-bank-sel');
+    var a = window._wdBanks[sel ? parseInt(sel.value, 10) : 0];
+    acc.value = a ? a.accountNumber : '';
+    ifsc.value = a ? a.ifsc : '';
+  } else {
+    if(bankBox) bankBox.style.display = 'none';
+    if(upiBox) upiBox.style.display = 'block';
+    acc.value = ((document.getElementById('wd-upi') || {}).value || '').trim();
+    ifsc.value = '';
+  }
+}
 </script>
 </body>
 </html>
