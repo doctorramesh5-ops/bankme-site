@@ -5472,7 +5472,7 @@ async function renderTxnHistory(){
         return { service: t.mainService, subService: t.subService, amount: t.amount, type: t.type, date: t.createdAt, userName: t.userName, userRole: t.userRole, status: t.status };
       });
     } else {
-      var res2 = await fetch(BACKEND_URL + '/user/' + CU.phone + '/transactions');
+      var res2 = await authFetch(BACKEND_URL + '/user/' + CU.phone + '/transactions');
       var data2 = await res2.json();
       TXN_HISTORY = (data2.transactions||[]).map(function(t){
         return { id: t._id, txnId: t._id, service: t.mainService, subService: t.subService, amount: t.type==='credit'?t.amount:-t.amount, date: t.createdAt, status: t.status, title: (t.subService||'Transaction').replace(/_/g,' '), rtaiVerified: true };
