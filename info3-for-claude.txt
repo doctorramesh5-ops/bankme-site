@@ -1,0 +1,119 @@
+---ROUTES---
+server.js:65:app.post("/api/create-payment", async (req, res) => {
+server.js:151:app.get("/api/order-status/:merchantOrderId", async (req, res) => {
+server.js:163:app.get("/api/reconcile", async (req, res) => {
+server.js:183:app.post("/api/phonepe-webhook", async (req, res) => {
+server.js:220:app.post("/api/refund", require("./admin").requireAdmin, async (req, res) => {
+server.js:296:app.get("/api/refund-status/:merchantRefundId", async (req, res) => {
+merchantapi.js:26:  router.get("/api/v1/me", (req, res) => {
+merchantapi.js:38:  router.post("/api/v1/payments", async (req, res) => {
+merchantapi.js:124:  router.get("/api/v1/payments/:merchantOrderId", async (req, res) => {
+merchantapi.js:161:  router.post("/api/v1/refunds", async (req, res) => {
+merchantapi.js:246:  router.get("/api/v1/refunds/:merchantRefundId", async (req, res) => {
+admin.js:38:router.post("/api/admin/login", (req, res) => {
+admin.js:54:router.post("/api/admin/logout", (req, res) => {
+admin.js:59:router.get("/api/admin/me", (req, res) => {
+admin.js:63:router.get("/api/admin/orders", requireAdmin, async (req, res) => {
+admin.js:73:router.get("/api/admin/refunds", requireAdmin, async (req, res) => {
+admin.js:88:router.post("/api/admin/merchants", requireAdmin, async (req, res) => {
+admin.js:140:router.get("/api/admin/merchants", requireAdmin, async (req, res) => {
+admin.js:150:router.post("/api/admin/merchants/:merchantId/status", requireAdmin, async (req, res) => {
+admin.js:168:router.post("/api/admin/merchants/:merchantId/keys", requireAdmin, async (req, res) => {
+admin.js:182:router.get("/api/admin/merchants/:merchantId/keys", requireAdmin, async (req, res) => {
+admin.js:188:router.post("/api/admin/keys/:keyId/revoke", requireAdmin, async (req, res) => {
+admin.js:198:router.get("/api/admin/reports", requireAdmin, async (req, res) => {
+admin.js:209:router.get("/api/admin/overview", requireAdmin, async (req, res) => {
+admin.js:220:router.get("/api/admin/reports", requireAdmin, async (req, res) => {
+admin.js:238:router.get("/api/admin/settings", requireAdmin, async (req, res) => {
+admin.js:245:router.post("/api/admin/settings", requireAdmin, async (req, res) => {
+admin.js:262:router.get("/api/admin/account", requireAdmin, (req, res) => {
+admin.js:271:router.post("/api/admin/merchants/:merchantId/contact", requireAdmin, async (req, res) => {
+admin.js:345:router.post("/api/admin/merchants/:merchantId/category", requireAdmin, async (req, res) => {
+admin.js:359:router.get("/api/admin/pricing/ratecard", requireAdmin, (req, res) => {
+admin.js:363:router.get("/api/admin/activations", requireAdmin, async (req, res) => {
+---ENV-NAMES---
+process.env.ADMIN_PASSWORD
+process.env.ADMIN_USERNAME
+process.env.ALLOW_OTP_LOGGING
+process.env.BASE_URL
+process.env.FIREBASE_SERVICE_ACCOUNT
+process.env.MSG91_AUTHKEY
+process.env.MSG91_OTP_TEMPLATE_ID
+process.env.PHONEPE_BASE_URL
+process.env.PHONEPE_CLIENT_ID
+process.env.PHONEPE_CLIENT_SECRET
+process.env.PHONEPE_CLIENT_VERSION
+process.env.PHONEPE_MERCHANT_ID
+process.env.RAZORPAY_KEY_ID
+process.env.RAZORPAY_KEY_SECRET
+process.env.RECONCILE_SECRET
+process.env.SESSION_SECRET
+process.env.SMTP_FROM
+process.env.SMTP_HOST
+process.env.SMTP_PASS
+process.env.SMTP_PORT
+process.env.SMTP_SECURE
+process.env.SMTP_USER
+process.env.WEBHOOK_PASSWORD
+process.env.WEBHOOK_USERNAME
+---README---
+# PayPe × PhonePe TSP — UAT Test Project
+
+A complete test setup for PhonePe Standard Checkout (TSP model) in the UAT sandbox.
+Built by Ramesh + Claude, PayPe Technologies, Coimbatore.
+
+## What's inside
+
+| File | What it does |
+|---|---|
+| `server.js` | Backend: auth token, create payment, order status, webhook receiver |
+| `public/index.html` | Test checkout page with Pay button |
+| `public/result.html` | Page the customer returns to; shows Success / Failed / Pending |
+| `.env` | Your PhonePe UAT credentials (keep secret, never upload to GitHub) |
+
+## How to run (first time)
+
+1. **Install Node.js** (if not installed): download the LTS version from https://nodejs.org
+
+2. **Open a terminal** in this folder and install the dependencies:
+   ```
+   npm install
+   ```
+
+3. **Start the server:**
+   ```
+   npm start
+   ```
+   You should see: `🚀 PayPe UAT server running → http://localhost:3000`
+
+4. **Open** http://localhost:3000 in your browser, enter an amount, and click **Pay with PhonePe**.
+   You'll be redirected to PhonePe's sandbox checkout page.
+
+## Important: set the mock template first
+
+PhonePe's email said: in UAT you must **set the response template** against the test MID (`TSPPAYPE`) to get mock Success / Failure / Pending responses.
+Do this in the UAT Sandbox portal (link from their email) before testing, otherwise payments may not simulate correctly.
+Test all three: Success ✅, Failure ❌, Pending ⏳.
+
+## Webhooks (step after basic flow works)
+
+PhonePe sends payment updates to `POST /api/phonepe-webhook`.
+Since `localhost` is not reachable from the internet, you need a public URL:
+- Quick option for testing: `npx ngrok http 3000` (gives a temporary public URL)
+- Permanent option: deploy this project to Render / Railway (free tiers available)
+
+Then register that URL using PhonePe's **Create Webhook API** (link in their email).
+
+## Moving to production later
+
+1. Base URL changes:
+   - Auth: `https://api.phonepe.com/apis/identity-manager`
+   - Other APIs: `https://api.phonepe.com/apis/pg`
+2. Replace UAT credentials in `.env` with production credentials from PhonePe.
+3. `X-MERCHANT-ID` must be each **real end merchant's MID** (your onboarded client), not TSPPAYPE.
+4. Change `redirectUrl` in server.js from localhost to your real domain.
+
+## Golden rules
+
+- The `clientSecret` lives only in `.env` on the server. Never in browser code, never in WhatsApp, never in GitHub.
+- Always confirm payment success from the **Order Status API or webhook** — never trust only the browser redirect.

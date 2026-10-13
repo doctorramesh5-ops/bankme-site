@@ -1,0 +1,43 @@
+---SCREENMAP---
+25:const SCREEN_MAP:any = {aeps:'AEPS', dmt:'DMT', bbps:'BBPS', upi:'UPI', erupee:'ERupee'};
+78:      const openSvc = (id:string, screen?:string) => { // AEPS_ROLES_V1
+179:              const screen = SCREEN_MAP[s.id];
+184:                  onPress={() => screen ? openSvc(s.id, screen) : alert(s.name+' coming soon!')}
+const SCREEN_MAP:any = {aeps:'AEPS', dmt:'DMT', bbps:'BBPS', upi:'UPI', erupee:'ERupee'};
+const ROLE_LABEL:any = {customer:'Customer', retailer:'Retailer', distributor:'Distributor', superdist:'Super Distributor', whitelabel:'White Label', admin:'Admin'};
+const ROLE_COLOR:any = {
+  admin:'#ef4444', whitelabel:'#8b5cf6', superdist:'#f59e0b',
+  distributor:'#06b6d4', retailer:'#10b981', customer:'#3b82f6',
+};
+
+export default function HomeScreen({navigation}:any) {
+  const {theme} = useTheme();
+  const user = useSelector((s:RootState) => s.auth.user);
+  const dispatch = useDispatch();
+  const [refreshing, setRefreshing] = useState(false);
+  const [balanceVisible, setBalanceVisible] = useState(false);
+  const [backendMsg, setBackendMsg] = useState('Connecting to backend...');
+  const [txns, setTxns] = useState<any[]>([]);
+---PG-FILES---
+activation.js
+admin.js
+apikeys.js
+db.js
+merchantapi.js
+merchantauth.js
+node_modules
+notify.js
+package-lock.json
+package.json
+paype-phonepe.zip
+pricing.js
+public
+README.md
+register-webhook.js
+repaint-portal.py
+server.js
+vercel.json
+---PG-ROUTES---
+zsh: no matches found: --include=*.js
+---PG-ENV-NAMES---
+zsh: no matches found: --include=*.js

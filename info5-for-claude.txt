@@ -1,0 +1,139 @@
+---APIKEYS---
+59:    const keyId = req.headers["x-paype-key-id"];
+60:    const secret = req.headers["x-paype-secret"];
+65:        detail: "Send X-PayPe-Key-Id and X-PayPe-Secret headers",
+---TXN-SCHEMA---
+const TransactionSchema = new mongoose.Schema({
+  phone: String,
+  userName: String,
+  userRole: String,        // customer, retailer, distributor, superdist, whitelabel
+  mainService: String,     // 'wallet', 'aeps', 'dmt', 'bbps', etc.
+  subService: String,      // 'add_money', 'payout', 'transfer', etc.
+  amount: Number,
+  type: { type: String, enum: ['credit', 'debit'] },
+  status: { type: String, default: 'success' }, // success, pending, failed
+  reference: String,       // Razorpay payment ID, Decentro txn ID, etc.
+  createdAt: { type: Date, default: Date.now },
+});
+const Transaction = mongoose.model('Transaction', TransactionSchema);
+
+---AADHAAR-RESULT---
+// ── Decentro calls THIS when the customer completes the QR scan ──
+app.post('/aadhaar/fetch-result', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const user = await User.findOne({ phone });
+    if (!user || !user.decentroTxnId) {
+      return res.json({ success: false, message: 'No pending verification found' });
+    }
+    if (user.aadhaarVerified && user.address) {
+      return res.json({ success: true, alreadyVerified: true });
+    }
+
+    const relayResponse = await axios.post(
+      'https://bankme.co.in/api/decentro-relay',
+      {
+        path: 'v2/kyc/sso/digilocker/' + user.decentroTxnId + '/eaadhaar',
+        body: {
+          consent: true,
+          purpose: 'BankMe KYC verification',
+          reference_id: 'FETCH_' + phone + '_' + Date.now(),
+          generate_xml: false,
+          generate_pdf: false,
+        },
+      },
+      {
+        headers: {
+          'client_id': process.env.DECENTRO_CLIENT_ID,
+          'client_secret': process.env.DECENTRO_CLIENT_SECRET,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('🔍 eAadhaar fetch result:', JSON.stringify(relayResponse.data));
+    const d = relayResponse.data?.data;
+
+    if (relayResponse.data?.status === 'SUCCESS' && d) {
+      const aadhaarUid = d.aadhaarUid || '';
+      const poi = d.proofOfIdentity || {};
+      const poa = d.proofOfAddress || {};
+      const address = [poa.house, poa.street, poa.landmark, poa.locality, poa.vtc, poa.postOffice, poa.subDistrict, poa.district, poa.state, poa.pincode].filter
+
+      await User.findOneAndUpdate(
+        { phone },
+        {
+          aadhaarVerified: true,
+          aadhaarVerifiedAt: new Date(),
+          aadhaarNumber: aadhaarUid || undefined,
+          address: address || user.address,
+          ...(poi.name ? { name: poi.name, panName: user.panName || poi.name } : {}),
+          ...(poi.dob ? { dob: poi.dob } : {}),
+          ...(poi.gender ? { gender: poi.gender } : {}),
+        }
+      );
+      return res.json({ success: true, verified: true });
+    }
+
+    res.json({ success: false, pending: true, message: relayResponse.data?.message || 'Verification not yet complete' });
+  } catch (err) {
+    console.log('❌ eAadhaar fetch error:', err.response?.data || err.message);
+    res.json({ success: false, error: err.response?.data || err.message });
+  }
+});
+
+// ── Generic bank/payment callback receiver (for Decentro core banking module registration) ──
+app.post('/upi/yesbank-callback', async (req, res) => {
+---CALLBACK---
+
+app.post('/aadhaar/callback', async (req, res) => {
+  try {
+    console.log('🔔 Decentro Aadhaar callback received:', JSON.stringify(req.body));
+    const { initialDecentroTxnId, status, data } = req.body;
+
+    if (status === 'SUCCESS' && data) {
+      // Find which user this belongs to via the reference ID we saved earlier
+      // (Decentro's callback ties back via initialDecentroTxnId - we match by looking up recent pending requests)
+      const maskedAadhaar = data.enrolmentNumber ? 'XXXX-XXXX-' + String(data.enrolmentNumber).slice(-4) : undefined;
+
+      // Update by matching name (best effort) - production should match via reference_id in a lookup table
+      await User.findOneAndUpdate(
+        { aadhaarRefId: { $exists: true } , name: data.residentName },
+        {
+          aadhaarVerified: true,
+          aadhaarVerifiedAt: new Date(),
+          aadhaarNumber: maskedAadhaar,
+          address: data.address || undefined,
+        }
+      );
+      console.log('✅ Aadhaar verified via callback for:', data.residentName);
+    }
+
+    res.json({ success: true }); // Decentro just needs a 200 OK
+  } catch (err) {
+    console.log('❌ Aadhaar callback processing error:', err.message);
+    res.json({ success: false });
+---WALLET-CREDIT---
+677:    const got = await User.findOneAndUpdate({ phone, wallet: { $gte: amt }, bankVerifyDue: { $gte: amt } }, { $inc: { wallet: -amt, bankVerifyDue: -amt } }, { strict:
+689:  const refund = async () => { if (held) { held = false; try { await User.updateOne({ phone }, { $inc: { wallet: FEE } }); } catch (e) { console.error('BANK VERIFY RE
+714:      const u2 = await User.findOneAndUpdate({ phone, wallet: { $gte: FEE } }, { $inc: { wallet: -FEE } });
+835:    await User.updateOne({ phone: p.phone }, { $inc: { wallet: p.totalDebit } });
+877:    const u2 = await User.findOneAndUpdate({ phone, wallet: { $gte: total } }, { $inc: { wallet: -total } }, { new: true });
+908:    if (held) { try { await User.updateOne({ phone }, { $inc: { wallet: held } }); } catch (e) { console.error('PAYOUT HOLD REFUND FAILED', phone, held, e.message); }
+1099:    await User.updateOne({ phone: d.phone }, { $inc: { wallet: d.netCredit } });
+1390:    const debited = await User.findOneAndUpdate({ phone: from, wallet: { $gte: total } }, { $inc: { wallet: -total } }, { new: true });
+1392:    try { await User.updateOne({ phone: to }, { $inc: { wallet: amount } }); }
+1394:      await User.updateOne({ phone: from }, { $inc: { wallet: total } });
+1833:      { $inc: { wallet: -amount } },
+1838:      { $inc: { wallet: amount } },
+1927:        { $inc: { wallet: -amount } },
+2075:        { $inc: { wallet: amount } },
+2159:    const user = await User.findOneAndUpdate({ phone }, { $inc: { wallet: credit } }, { new: true });
+2327:    const user = await User.findOneAndUpdate({ phone }, { $inc: { wallet: credit } }, { new: true });
+2443:      { $inc: { wallet: amount } },
+3474:      const u = await User.findOneAndUpdate({ phone: p.phone }, { $inc: { wallet: share } }, { new: true });
+3505:    const updated = await User.findOneAndUpdate({ phone: req.authPhone }, { $inc: { wallet: amount } }, { new: true });
+4143:  const refund = async () => { if (held) { held = false; try { await User.updateOne({ phone: payerPhone }, { $inc: { wallet: FEE } }); } catch (e) { console.error('D
+4158:      const u2 = await User.findOneAndUpdate({ phone: payerPhone, wallet: { $gte: FEE } }, { $inc: { wallet: -FEE } });
+---ADMIN-MW---
+459:function requireAuth(req, res, next) {
