@@ -5017,7 +5017,7 @@ async function showWalletAction(type){
       +'<label class="flabel">Amount (₹)</label>'
       +'<input class="finp" id="wa-amount" type="number" placeholder="Enter amount to add" min="1"/>'
       +'<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'
-      +[100,500,1000,2000,5000].map(function(a){
+      +[].map(function(a){ /* QUICKAMT_OFF */
         return '<button onclick="document.getElementById(\'wa-amount\').value='+a+'" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.75rem">₹'+fmtS(a)+'</button>';
       }).join('')
       +'</div>'
@@ -5095,7 +5095,7 @@ async function showWalletAction(type){
       +'<label class="flabel">Amount to Withdraw (₹)</label>'
       +'<input class="finp" id="wd-amount" type="number" min="100" step="1" placeholder="Enter amount"/>'
       +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'
-      +[500,1000,2000,5000].map(function(a){
+      +[].map(function(a){ /* QUICKAMT_OFF */
         return '<button onclick="document.getElementById(\'wd-amount\').value='+a+'" style="padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--muted2);cursor:pointer;font-size:.75rem">₹'+fmtS(a)+'</button>';
       }).join('')
       +'</div>'
