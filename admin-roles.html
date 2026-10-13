@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Role requests</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#14213d;--muted:#5b6478;--line:#e2e6f0;--ok:#12a150;--bad:#d93a3a}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#151b30;--text:#eef1fa;--muted:#9aa4bd;--line:#26304d}}
+*{box-sizing:border-box}body{margin:0 auto;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:760px}
+h1{font-size:1.2rem}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;font-size:.85rem;line-height:1.6;word-break:break-word}
+.k{color:var(--muted)}.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button{border:0;border-radius:10px;padding:9px 16px;font-size:.85rem;cursor:pointer;color:#fff}.ok{background:var(--ok)}.no{background:var(--bad)}
+.tag{display:inline-block;background:#0a7cff;color:#fff;border-radius:20px;padding:2px 10px;font-size:.75rem}
+#msg{color:var(--muted);margin:10px 0;font-size:.85rem}
+</style></head><body>
+<h1>Super Distributor and White Label requests</h1>
+<div id="msg">Loading…</div><div id="list"></div>
+<script>
+var BASE='https://bankme-backend.onrender.com';
+function tok(){try{return localStorage.getItem('bankme_token')||'';}catch(e){return '';}}
+function api(p,o){o=o||{};o.headers=Object.assign({'Authorization':'Bearer '+tok(),'Content-Type':'application/json'},o.headers||{});return fetch(BASE+p,o).then(function(r){return r.json();});}
+function el(t,x,c){var e=document.createElement(t);if(x!=null)e.textContent=x;if(c)e.className=c;return e;}
+function line(b,k,v){var d=el('div');d.appendChild(el('span',k+': ','k'));d.appendChild(document.createTextNode(v==null||v===''?'-':String(v)));b.appendChild(d);}
+var NAMES={superdist:'Super Distributor',whitelabel:'White Label'};
+function act(u,kind){
+  var note=prompt(kind==='approve'?'Note (optional):':'Reason for rejecting:'); if(note===null)return;
+  if(!confirm((kind==='approve'?'Approve ':'Reject ')+u.phone+'?'))return;
+  api('/admin/rolerequests/'+kind,{method:'POST',body:JSON.stringify({phone:u.phone,note:note,reason:note})}).then(function(d){alert(d.success?'Done':(d.message||'Failed'));load();});
+}
+function load(){
+  var m=document.getElementById('msg'),L=document.getElementById('list');L.textContent='';
+  api('/admin/rolerequests').then(function(d){
+    if(!d.success){m.textContent=d.message||'Not allowed (sign in as admin on bankme.co.in first)';return;}
+    m.textContent=d.requests.length?(d.requests.length+' pending request(s)'):'No pending requests.';
+    d.requests.forEach(function(u){
+      var b=el('div',null,'card');
+      var t=el('div'); t.appendChild(el('span',NAMES[u.requestedRole],'tag')); b.appendChild(t);
+      line(b,'Name',u.panName||u.name); line(b,'Phone',u.phone); line(b,'Email',u.email);
+      line(b,'KYC',u.kycStatus); line(b,'Registration',(u.companyType||'-')+' '+(u.gstNumber||''));
+      line(b,'Business',u.shopName); line(b,'Address',u.shopAddress||u.address);
+      line(b,'Requested',u.requestedRoleAt);
+      var r=el('div',null,'row');
+      var a=el('button','Approve','ok');a.onclick=function(){act(u,'approve');};
+      var x=el('button','Reject','no');x.onclick=function(){act(u,'reject');};
+      r.appendChild(a);r.appendChild(x);b.appendChild(r);L.appendChild(b);
+    });
+  });
+}
+load();
+</script></body></html>
