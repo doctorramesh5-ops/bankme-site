@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Card cases</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#14213d;--muted:#5b6478;--line:#e2e6f0;--pri:#0a7cff;--ok:#12a150;--bad:#d93a3a}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#151b30;--text:#eef1fa;--muted:#9aa4bd;--line:#26304d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:900px;margin:0 auto}
+h1{font-size:1.2rem}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.tabs button,.b{border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.85rem}
+.tabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;font-size:.85rem;line-height:1.6;word-break:break-word}
+.k{color:var(--muted)}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.no{background:var(--bad);color:#fff;border-color:var(--bad)}
+input{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);margin:4px 6px 4px 0}
+#msg{margin:10px 0;color:var(--muted);font-size:.85rem}
+</style></head><body>
+<h1>Card Withdrawal — cases</h1>
+<div id="msg">Loading…</div>
+<div class="tabs" id="tabs"></div>
+<div id="list"></div>
+<script>
+var BASE='https://bankme-backend.onrender.com';
+var TABS=[['held','On hold'],['claims','Retailer claims'],['recent','Recent'],['debts','Chargebacks'],['settings','Limits']];
+var cur='held';
+function tok(){ try{return localStorage.getItem('bankme_token')||'';}catch(e){return '';} }
+function api(path,opt){
+  opt=opt||{}; opt.headers=Object.assign({'Authorization':'Bearer '+tok(),'Content-Type':'application/json'},opt.headers||{});
+  return fetch(BASE+path,opt).then(function(r){return r.json();});
+}
+function el(t,txt,cls){var e=document.createElement(t); if(txt!=null)e.textContent=txt; if(cls)e.className=cls; return e;}
+function line(box,k,v){var d=el('div'); d.appendChild(el('span',k+': ','k')); d.appendChild(document.createTextNode(v==null||v===''?'-':String(v))); box.appendChild(d);}
+function tabs(){
+  var t=document.getElementById('tabs'); t.textContent='';
+  TABS.forEach(function(x){var b=el('button',x[1]); if(x[0]===cur)b.className='on'; b.onclick=function(){cur=x[0];tabs();load();}; t.appendChild(b);});
+}
+function decide(c,kind){
+  var note=prompt(kind==='approve'?'Reason for crediting the retailer (saved in the record):':'Reason for refunding the customer (saved in the record):');
+  if(note===null)return;
+  if(!confirm(kind==='approve'?'Credit the retailer wallet for this case?':'Refund the customer card for this case?'))return;
+  api('/admin/cardwd/'+kind,{method:'POST',body:JSON.stringify({caseId:c.caseId,note:note})}).then(function(d){
+    alert(d.success?'Done':(d.message||'Failed')); load();
+  });
+}
+function caseCard(c){
+  var b=el('div',null,'card');
+  line(b,'Case',c.caseId); line(b,'State',c.state); line(b,'Amount','Rs '+(c.amount||'-'));
+  line(b,'Retailer',(c.retailerName||'')+' '+(c.retailerPhone||'')+' ('+(c.retailerRole||'')+')');
+  line(b,'Customer entered',c.enteredName+' / '+c.customerMobile);
+  line(b,'Aadhaar name',c.ekycName); line(b,'Card holder name',c.cardHolderName);
+  line(b,'Aadhaar last 4',c.aadhaarLast4); line(b,'DOB / gender',(c.ekycDob||'')+' / '+(c.ekycGender||''));
+  line(b,'Address',c.ekycAddress); line(b,'PG order',c.pgOrderId);
+  if(c.claimRequested) line(b,'Retailer claim',c.claimNote||'yes');
+  if(c.adminDecision) line(b,'Decision',c.adminDecision+' by '+c.adminBy+' — '+(c.adminNote||''));
+  if(c.state==='held_name_mismatch'||c.state==='held_name_unverified'){
+    var r=el('div',null,'row');
+    var a=el('button','Approve & credit retailer','b ok'); a.onclick=function(){decide(c,'approve');};
+    var f=el('button','Refund customer','b no'); f.onclick=function(){decide(c,'refund');};
+    r.appendChild(a); r.appendChild(f); b.appendChild(r);
+  }
+  if(c.state==='credited'){
+    var cb=el('button','Record chargeback','b'); cb.onclick=function(){
+      var amt=prompt('Chargeback amount (Rs):',c.amount); if(amt===null)return;
+      var note=prompt('Note:')||'';
+      api('/admin/cardwd/chargeback',{method:'POST',body:JSON.stringify({caseId:c.caseId,amount:Number(amt),note:note})}).then(function(d){
+        alert(d.success?('Recorded. Debt left: Rs '+d.debtLeft+', recovered now: Rs '+d.recoveredNow):(d.message||'Failed')); load();});
+    };
+    var r2=el('div',null,'row'); r2.appendChild(cb); b.appendChild(r2);
+  }
+  return b;
+}
+function load(){
+  var m=document.getElementById('msg'), L=document.getElementById('list'); L.textContent=''; m.textContent='Loading…';
+  if(cur==='debts'){
+    api('/admin/cardwd/debts').then(function(d){
+      if(!d.success){m.textContent=d.message||'Not allowed (admin login needed)';return;}
+      m.textContent=d.debts.length+' retailer(s) with chargeback debt';
+      d.debts.forEach(function(u){var b=el('div',null,'card'); line(b,'Retailer',(u.name||'')+' '+u.phone+' ('+u.role+')'); line(b,'Debt','Rs '+u.chargebackDebt); line(b,'Wallet','Rs '+u.wallet); L.appendChild(b);});
+      L.appendChild(el('h3','Recent ledger'));
+      d.ledger.forEach(function(x){var b=el('div',null,'card'); line(b,x.kind,'Rs '+x.amount+' — '+x.retailerPhone); line(b,'When',x.at); if(x.note)line(b,'Note',x.note); L.appendChild(b);});
+    }); return;
+  }
+  if(cur==='settings'){
+    api('/admin/cardwd/settings').then(function(d){
+      if(!d.success){m.textContent=d.message||'Not allowed';return;}
+      m.textContent='These limits apply to every new card payment.';
+      var s=d.settings, box=el('div',null,'card'), names={perTxnMax:'Max per transaction (Rs)',perTxnMin:'Min per transaction (Rs)',retailerMonthlyMax:'Max per retailer per month (Rs)',feePct:'Fee %',recoveryPct:'Chargeback recovery %',recoveryThreshold:'Recovery switches to wallet at debt (Rs)'};
+      var inputs={};
+      Object.keys(names).forEach(function(k){var l=el('div'); l.appendChild(el('span',names[k]+': ','k')); var i=el('input'); i.value=s[k]; inputs[k]=i; l.appendChild(i); box.appendChild(l);});
+      var sv=el('button','Save','b ok'); sv.onclick=function(){var body={}; Object.keys(inputs).forEach(function(k){body[k]=inputs[k].value;}); api('/admin/cardwd/settings',{method:'POST',body:JSON.stringify(body)}).then(function(x){alert(x.success?'Saved':'Failed'); load();});};
+      box.appendChild(sv); L.appendChild(box);
+    }); return;
+  }
+  var q=cur==='held'?'':'?';
+  api('/admin/cardwd/cases').then(function(d){
+    if(!d.success){m.textContent=d.message||'Not allowed (sign in as admin on bankme.co.in first)';return;}
+    var rows=d.cases.filter(function(c){
+      if(cur==='held')return c.state==='held_name_mismatch'||c.state==='held_name_unverified';
+      if(cur==='claims')return c.claimRequested&&(c.state==='held_name_mismatch'||c.state==='held_name_unverified');
+      return true;});
+    m.textContent=rows.length+' case(s)';
+    rows.forEach(function(c){L.appendChild(caseCard(c));});
+  });
+}
+tabs(); load();
+</script></body></html>
