@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BankMe Upgrade Requests</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{--bg:#0b1020;--card:#131a2e;--line:#243050;--text:#e8edf7;--mute:#93a0bd;--ok:#10b981;--bad:#ef4444;--pri:#3b82f6}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:8px 0 4px} .sub{color:var(--mute);font-size:13px;margin-bottom:14px}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tab{padding:8px 14px;border:1px solid var(--line);border-radius:99px;background:none;color:var(--mute);cursor:pointer;font:inherit}
+  .tab.on{background:var(--pri);border-color:var(--pri);color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .k{color:var(--mute);font-size:12px} .v{font-weight:600;word-break:break-word}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:10px 0}
+  .btn{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--text);cursor:pointer;font:inherit;font-weight:700}
+  .btn.ok{background:var(--ok);border-color:var(--ok);color:#00150c} .btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+  .photos{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px} .photos img{max-width:260px;max-height:200px;border-radius:10px;border:1px solid var(--line)}
+  .msg{padding:12px;border:1px dashed var(--line);border-radius:12px;color:var(--mute)}
+  input{width:100%;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Retailer upgrade requests</h1>
+  <div class="sub">Check the shop details and photos, then approve or reject. Approval opens AEPS and Money Transfer for that account.</div>
+  <div class="tabs">
+    <button class="tab on" data-s="pending">Pending</button>
+    <button class="tab" data-s="approved">Approved</button>
+    <button class="tab" data-s="rejected">Rejected</button>
+  </div>
+  <div id="list" class="msg">Loading...</div>
+</div>
+<script>
+var BACKEND = 'https://bankme-backend.onrender.com';
+var status = 'pending';
+function tok(){ try { return localStorage.getItem('bankme_token') || ''; } catch(e){ return ''; } }
+function api(path, opt){
+  opt = opt || {}; opt.headers = Object.assign({'Authorization':'Bearer ' + tok(), 'Content-Type':'application/json'}, opt.headers || {});
+  return fetch(BACKEND + path, opt).then(function(r){ return r.json(); });
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function when(d){ try { return new Date(d).toLocaleString('en-IN'); } catch(e){ return ''; } }
+function load(){
+  var box = document.getElementById('list');
+  if (!tok()) { box.textContent = 'Please log in as admin on bankme.co.in first, then open this page again.'; return; }
+  box.className = 'msg'; box.textContent = 'Loading...';
+  api('/admin/upgrade-requests?status=' + status).then(function(d){
+    if (!d.success) { box.textContent = d.message || 'Could not load. Are you logged in as admin?'; return; }
+    if (!d.requests.length) { box.textContent = 'No ' + status + ' requests.'; return; }
+    box.className = ''; box.innerHTML = '';
+    d.requests.forEach(function(r){ box.appendChild(card(r)); });
+  }).catch(function(){ box.textContent = 'Network error. Please try again.'; });
+}
+function card(r){
+  var c = document.createElement('div'); c.className = 'card';
+  var map = (r.lat && r.lng) ? 'https://www.google.com/maps?q=' + encodeURIComponent(r.lat + ',' + r.lng) : '';
+  c.innerHTML =
+    '<div class="row"><div><div class="v" style="font-size:17px">' + esc(r.shopName) + '</div><div class="k">' + esc(r.name || r.panName) + ' · ' + esc(r.phone) + '</div></div><div class="k">' + when(r.createdAt) + '</div></div>' +
+    '<div class="grid">' +
+      '<div><div class="k">Address</div><div class="v">' + esc(r.shopAddress) + '</div></div>' +
+      '<div><div class="k">Location</div><div class="v">' + (map ? '<a style="color:#7aa7ff" target="_blank" rel="noopener" href="' + map + '">Open on map</a>' : 'Not saved') + '</div></div>' +
+      '<div><div class="k">Business certificate</div><div class="v">' + esc(r.bizCert || '-') + '</div></div>' +
+      '<div><div class="k">Licence no.</div><div class="v">' + esc(r.licenseNo || '-') + '</div></div>' +
+      '<div><div class="k">PAN name</div><div class="v">' + esc(r.panName || '-') + '</div></div>' +
+      '<div><div class="k">Photos</div><div class="v">' + (r.hasFrontPhoto ? 'Front ✓ ' : 'Front ✗ ') + (r.hasBoardPhoto ? 'Board ✓' : 'Board ✗') + '</div></div>' +
+    '</div>' +
+    '<div class="photos"></div>' +
+    (r.status === 'pending'
+      ? '<div style="margin-top:12px"><button class="btn" data-a="photos">View photos</button> <button class="btn ok" data-a="approve">Approve</button> <button class="btn bad" data-a="reject">Reject</button></div>'
+      : '<div class="k" style="margin-top:10px">' + esc(r.status) + (r.reason ? ' · ' + esc(r.reason) : '') + ' · ' + when(r.decidedAt) + '</div>');
+  c.addEventListener('click', function(e){
+    var a = e.target && e.target.getAttribute && e.target.getAttribute('data-a'); if (!a) return;
+    if (a === 'photos') {
+      api('/admin/upgrade-requests/' + r.id + '/photos').then(function(d){
+        var p = c.querySelector('.photos'); p.innerHTML = '';
+        if (!d.success) { p.textContent = d.message || 'No photos'; return; }
+        [d.front, d.board].forEach(function(src){ if (src) { var i = document.createElement('img'); i.src = src; i.alt = 'Shop photo'; p.appendChild(i); } });
+        if (!p.children.length) p.textContent = 'No photos saved.';
+      });
+    } else if (a === 'approve') {
+      if (!confirm('Approve ' + r.shopName + ' (' + r.phone + ') as Retailer?')) return;
+      api('/admin/upgrade-requests/' + r.id + '/approve', {method:'POST', body:'{}'}).then(function(d){ if (d.success) load(); else alert(d.message || 'Failed'); });
+    } else if (a === 'reject') {
+      var reason = prompt('Reason for rejecting (the customer will see this):'); if (!reason) return;
+      api('/admin/upgrade-requests/' + r.id + '/reject', {method:'POST', body: JSON.stringify({reason: reason})}).then(function(d){ if (d.success) load(); else alert(d.message || 'Failed'); });
+    }
+  });
+  return c;
+}
+document.querySelectorAll('.tab').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on'); status = b.getAttribute('data-s'); load();
+  });
+});
+load();
+</script>
+</body>
+</html>
