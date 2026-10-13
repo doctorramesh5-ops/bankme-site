@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verify BankMe partner</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#14213d;--muted:#5b6478}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#151b30;--text:#eef1fa;--muted:#9aa4bd}}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+.c{width:100%;max-width:380px;background:var(--card);border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.12)}
+.big{font-size:2.8rem}h1{font-size:1.15rem;margin:8px 0}.m{color:var(--muted);font-size:.9rem;line-height:1.7}
+</style></head><body><div class="c" id="c"><div class="m">Checking…</div></div>
+<script>
+var id=new URLSearchParams(location.search).get('id')||'';
+var c=document.getElementById('c');
+function put(icon,title,lines){
+  c.textContent='';
+  var a=document.createElement('div'); a.className='big'; a.textContent=icon; c.appendChild(a);
+  var h=document.createElement('h1'); h.textContent=title; c.appendChild(h);
+  lines.forEach(function(t){var d=document.createElement('div'); d.className='m'; d.textContent=t; c.appendChild(d);});
+}
+fetch('https://bankme-backend.onrender.com/certificate/verify/'+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(d){
+  if(d&&d.valid){ put('✅','Authorised BankMe '+d.role,[d.shopName,'Network ID: '+id.toUpperCase(),'Status: active']); }
+  else if(d&&d.status==='suspended'){ put('⚠️','Not active',['This partner is currently suspended.','Do not transact. Contact BankMe support.']); }
+  else { put('❌','Not found',['This ID is not a registered BankMe partner.','Do not trust this certificate.']); }
+}).catch(function(){ put('⚠️','Could not check',['Please try again in a moment.']); });
+</script></body></html>
