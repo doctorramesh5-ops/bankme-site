@@ -6248,7 +6248,7 @@ function toggleAddressEdit(){
 
 function saveAddress(){
   var addr = document.getElementById('f-addr').value.trim();
-  fetch(BACKEND_URL + '/user/' + CU.phone + '/address', {
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/address', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ address: addr })
@@ -6446,7 +6446,7 @@ function captureSelfie(){
 }
 
 function finalizeSelfie(dataUrl){
-  fetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
+  authFetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ avatarUrl: dataUrl })
@@ -6473,7 +6473,7 @@ function handleAvatarUpload(input){
   if(!file) return;
   var reader = new FileReader();
   reader.onload = function(e){
-    fetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
+    authFetch(BACKEND_URL + '/user/' + CU.phone + '/avatar', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ avatarUrl: e.target.result })
@@ -6947,7 +6947,7 @@ function verifyBizCert(){
   btn.disabled = true; btn.textContent = 'Verifying...';
   statusEl.innerHTML = '<span style="color:var(--muted2)">🔍 Verifying with government registry...</span>';
 
-  fetch(BACKEND_URL + '/business/verify', {
+  authFetch(BACKEND_URL + '/business/verify', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ phone: CU.phone, documentType: docType, idNumber: idNumber })
@@ -7158,7 +7158,7 @@ async function saveShopDetails(){
 
   // Save to backend (MongoDB)
   try{
-    var r = await fetch(BACKEND_URL + '/user/' + CU.phone + '/shop-details', {
+    var r = await authFetch(BACKEND_URL + '/user/' + CU.phone + '/shop-details', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(updates)
