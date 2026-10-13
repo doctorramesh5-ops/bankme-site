@@ -12045,6 +12045,56 @@ function wdSync(){
   new MutationObserver(function(){ clearTimeout(t); t=setTimeout(scan,250); }).observe(document.body,{childList:true,subtree:true});
 })();
 </script>
+
+<script>
+/* WEBFIX_V2: Card Withdrawal on home, certificate card in Profile, admin console links */
+(function(){
+  function role(){ try{ return CU && CU.role; }catch(e){ return null; } }
+  var t=null;
+  function run(){
+    var r=role(); if(!r) return;
+    // 1. Card Withdrawal tile on the home Quick Services grid
+    var grid=document.querySelector('#page-dashboard .svc-grid');
+    if(grid && !grid.querySelector('[data-cw]') && r!=='admin' && r!=='whitelabel'){
+      var b=document.createElement('div'); b.className='svc-btn'; b.setAttribute('data-cw','1'); b.style.cursor='pointer'; b.style.borderColor='#6366f122';
+      var i=document.createElement('span'); i.className='svc-icon'; i.textContent='\uD83D\uDCB3';
+      var n=document.createElement('div'); n.className='svc-name'; n.style.color='#6366f1'; n.textContent='Card Withdrawal';
+      b.appendChild(i); b.appendChild(n);
+      b.addEventListener('click',function(){ openService('creditcard'); });
+      grid.appendChild(b);
+    }
+    // 2. Certificate card in Profile (retailer / distributor / super distributor)
+    if(['retailer','distributor','superdist'].indexOf(r)>=0 && !document.querySelector('[data-cert]')){
+      var anchor=document.getElementById('bank-accounts-card');
+      if(anchor){
+        var w=document.createElement('div'); w.className='pcard'; w.setAttribute('data-cert','1'); w.style.marginBottom='14px';
+        var h=document.createElement('div'); h.style.cssText='font-family:var(--font-head);font-size:.9rem;font-weight:700;margin-bottom:6px'; h.textContent='\uD83C\uDFC5 Authorised BankMe Certificate'; w.appendChild(h);
+        var p=document.createElement('div'); p.style.cssText='font-size:.78rem;color:var(--muted2);line-height:1.6;margin-bottom:10px'; p.textContent='Print this certificate in high quality and display it at your shop. It has your Network ID and a QR code customers can scan to verify you.'; w.appendChild(p);
+        var bt=document.createElement('button'); bt.className='btn-primary'; bt.style.width='100%'; bt.textContent='Open Certificate \u2192';
+        bt.onclick=function(){ window.open('/certificate.html','_blank'); };
+        w.appendChild(bt);
+        anchor.parentNode.insertBefore(w,anchor);
+      }
+    }
+    // 3. Admin console links
+    if(r==='admin'){
+      var dash=document.getElementById('page-dashboard');
+      if(dash && !document.getElementById('adm-links') && document.getElementById('ad-content')){
+        var box=document.createElement('div'); box.id='adm-links';
+        box.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px';
+        [['\u2B06\uFE0F Upgrades','/admin-upgrades.html'],['\uD83D\uDCB3 Card Withdrawal','/admin-cardwd.html'],['\uD83C\uDFF7\uFE0F Role Requests','/admin-roles.html']].forEach(function(x){
+          var a=document.createElement('a'); a.href=x[1]; a.target='_blank'; a.textContent=x[0];
+          a.style.cssText='display:block;text-align:center;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;font-weight:700;font-size:.82rem;color:var(--text);text-decoration:none';
+          box.appendChild(a);
+        });
+        var st=document.getElementById('ad-stats'); var ref=st||document.getElementById('ad-content');
+        ref.parentNode.insertBefore(box,ref);
+      }
+    }
+  }
+  new MutationObserver(function(){ clearTimeout(t); t=setTimeout(run,250); }).observe(document.body,{childList:true,subtree:true});
+})();
+</script>
 </body>
 </html>
 
