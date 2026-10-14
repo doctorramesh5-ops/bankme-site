@@ -3,11 +3,19 @@ export const config = {
   regions: ['bom1'], // Mumbai region
 };
 
+// RELAY_KYC_PROD_V1: KYC calls (Aadhaar/DigiLocker etc.) use Decentro production; everything else stays on staging until tested.
+// Set DECENTRO_KYC_ENV=staging in the host settings to switch KYC back to staging instantly.
+function decentroBase(p) {
+  const kyc = /^v2\/kyc\//.test(String(p || ''));
+  const env = String(process.env.DECENTRO_KYC_ENV || 'production').toLowerCase();
+  return (kyc && env !== 'staging') ? 'https://in.decentro.tech/' : 'https://in.staging.decentro.tech/';
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const { path } = req.query;
-      const targetUrl = path.startsWith('http') ? path : 'https://in.staging.decentro.tech/' + path;
+      const targetUrl = path.startsWith('http') ? path : decentroBase(path) + path;
       const response = await fetch(targetUrl, {
         method: 'GET',
         headers: {
@@ -24,7 +32,7 @@ export default async function handler(req, res) {
     }
 
     const { path, body, headers: customHeaders } = req.body;
-    const targetUrl = path.startsWith('http') ? path : 'https://in.staging.decentro.tech/' + path;
+    const targetUrl = path.startsWith('http') ? path : decentroBase(path) + path;
 
     // If customHeaders provided, forward those exactly (generic passthrough mode)
     // Otherwise, fall back to original Decentro-specific headers for backward compatibility
