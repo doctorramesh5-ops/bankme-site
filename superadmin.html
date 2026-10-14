@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PAYPE Super Admin</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--text:#14213d;--muted:#5b6478;--line:#e2e6f0;--pri:#1e2f8a;--acc:#0a7cff;--ok:#12a150;--bad:#d93a3a;--warn:#c98a00}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#151b30;--text:#eef1fa;--muted:#9aa4bd;--line:#26304d;--pri:#6f86ff;--acc:#4da3ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:var(--pri);color:#fff;padding:14px 16px}
+header h1{margin:0;font-size:1.1rem;letter-spacing:.3px}header div{font-size:.75rem;opacity:.85;margin-top:2px}
+main{max-width:980px;margin:0 auto;padding:14px 16px 60px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+button,.b{border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.85rem}
+.tabs button.on,.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;font-size:.85rem;line-height:1.6;word-break:break-word}
+.k{color:var(--muted)}h2{font-size:1rem;margin:4px 0 10px}h3{font-size:.92rem;margin:0 0 8px}
+label{display:block;font-size:.75rem;color:var(--muted);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:.85rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:.7rem;font-weight:700;border:1px solid var(--line)}
+.p-active{color:var(--ok)}.p-suspended{color:var(--bad)}.p-pending{color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+#msg{margin:8px 0;font-size:.85rem;color:var(--muted)}#msg.err{color:var(--bad)}#msg.ok{color:var(--ok)}
+.envs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.prod{border-color:var(--bad)}
+</style></head><body>
+<header><h1>PAYPE Super Admin</h1><div>Platform control for BankMe · tenants, providers, keys, environments</div></header>
+<main>
+<div id="msg">Loading…</div>
+<div class="tabs" id="tabs"></div>
+<div id="view"></div>
+</main>
+<script>
+var BASE='https://bankme-backend.onrender.com';
+var TABS=[['tenants','Tenants'],['providers','Providers & Keys'],['audit','Audit log']];
+var cur='tenants', CAT=null, TENANTS=[], selTenant='platform', selEnv='sandbox';
+function tok(){ try{return localStorage.getItem('bankme_token')||'';}catch(e){return '';} }
+function api(path,opt){
+  opt=opt||{}; opt.headers=Object.assign({'Authorization':'Bearer '+tok(),'Content-Type':'application/json'},opt.headers||{});
+  return fetch(BASE+path,opt).then(function(r){return r.json();});
+}
+function post(path,body){ return api(path,{method:'POST',body:JSON.stringify(body)}); }
+function el(t,txt,cls){var e=document.createElement(t); if(txt!=null)e.textContent=txt; if(cls)e.className=cls; return e;}
+function msg(t,kind){var m=document.getElementById('msg'); m.textContent=t||''; m.className=kind||'';}
+function field(box,label,id,type,ph){
+  var l=el('label',label); box.appendChild(l);
+  var i=(type==='select')?el('select'):el('input'); i.id=id; if(type&&type!=='select')i.type=type; if(ph)i.placeholder=ph; box.appendChild(i); return i;
+}
+function tabs(){
+  var t=document.getElementById('tabs'); t.textContent='';
+  TABS.forEach(function(x){var b=el('button',x[1]); if(x[0]===cur)b.className='on'; b.onclick=function(){cur=x[0];tabs();show();}; t.appendChild(b);});
+}
+function show(){
+  msg('');
+  var v=document.getElementById('view'); v.textContent='';
+  if(cur==='tenants') return viewTenants(v);
+  if(cur==='providers') return viewProviders(v);
+  return viewAudit(v);
+}
+function loadTenants(cb){ api('/superadmin/tenants').then(function(d){ if(d.success){TENANTS=d.tenants; cb&&cb();} else msg(d.message||'Could not load tenants.','err'); }).catch(function(){msg('Network error.','err');}); }
+function viewTenants(v){
+  loadTenants(function(){
+    var f=el('div','', 'card'); f.appendChild(el('h2','Create tenant'));
+    var g=el('div','', 'grid'); f.appendChild(g);
+    field(g,'Name','t_name','text','Customer company name');
+    field(g,'Tenant id (letters, numbers, dashes)','t_id','text','acme-pay');
+    var ty=field(g,'Type','t_type','select'); [['network','Network only (BankMe brand)'],['whitelabel','White Label (own brand / domain)'],['dedicated','Dedicated / tailor-made']].forEach(function(o){var op=el('option',o[1]); op.value=o[0]; ty.appendChild(op);});
+    field(g,'Owner phone','t_owner','tel','10-digit');
+    field(g,'Domain or sub-domain','t_domain','text','pay.customer.com');
+    var pm=field(g,'Pricing model','t_plan','select'); [['payg','Pay as you go'],['monthly','Monthly'],['yearly','Yearly']].forEach(function(o){var op=el('option',o[1]); op.value=o[0]; pm.appendChild(op);});
+    field(g,'Setup fee (Rs)','t_setup','number'); field(g,'Monthly fee (Rs)','t_month','number'); field(g,'Yearly fee (Rs)','t_year','number'); field(g,'Per-transaction fee (Rs)','t_txn','number');
+    field(g,'Services (comma separated)','t_svc','text','aeps, dmt, bbps, card');
+    field(g,'Note','t_note','text');
+    var r=el('div','', 'row'); var b=el('button','Create tenant','pri'); b.onclick=createTenant; r.appendChild(b); f.appendChild(r);
+    v.appendChild(f);
+    TENANTS.forEach(function(t){
+      var c=el('div','', 'card'); c.appendChild(el('h3',t.name+'  ('+t.tenantId+')'));
+      var s=el('span',t.status,'pill p-'+t.status); c.appendChild(s);
+      [['Type',t.type],['Owner',t.ownerPhone],['Domain',t.domain],['Plan',t.plan&&t.plan.model],['Services',(t.services||[]).join(', ')],['Note',t.note]].forEach(function(x){
+        var d=el('div'); d.appendChild(el('span',x[0]+': ','k')); d.appendChild(document.createTextNode(x[1]||'-')); c.appendChild(d);});
+      if(t.tenantId!=='platform'){
+        var rr=el('div','', 'row');
+        ['active','suspended','pending'].forEach(function(st){ if(st===t.status) return; var bb=el('button','Set '+st); bb.onclick=function(){ if(!confirm('Set '+t.tenantId+' to '+st+'?'))return; post('/superadmin/tenants/status',{tenantId:t.tenantId,status:st}).then(function(d){ if(d.success){msg('Updated.','ok'); show();} else msg(d.message||'Failed.','err'); }); }; rr.appendChild(bb); });
+        c.appendChild(rr);
+      }
+      v.appendChild(c);
+    });
+  });
+}
+function createTenant(){
+  function g(i){return document.getElementById(i).value;}
+  post('/superadmin/tenants',{name:g('t_name'),tenantId:g('t_id'),type:g('t_type'),ownerPhone:g('t_owner'),domain:g('t_domain'),planModel:g('t_plan'),setupFee:g('t_setup'),monthlyFee:g('t_month'),yearlyFee:g('t_year'),perTxnFee:g('t_txn'),services:g('t_svc').split(',').map(function(x){return x.trim();}).filter(Boolean),note:g('t_note')})
+   .then(function(d){ if(d.success){msg('Tenant created (pending).','ok'); show();} else msg(d.message||'Could not create.','err'); }).catch(function(){msg('Network error.','err');});
+}
+function viewProviders(v){
+  loadTenants(function(){
+    api('/superadmin/catalog').then(function(c){
+      if(!c.success){ msg(c.message||'Could not load.','err'); return; }
+      CAT=c;
+      if(!c.vault) msg('SA_VAULT_KEY is not set on the server. You can view this page but cannot store secrets yet.','err');
+      var bar=el('div','', 'card'); 
+      var l=el('label','Tenant'); bar.appendChild(l);
+      var sel=el('select'); TENANTS.forEach(function(t){var o=el('option',t.name+' ('+t.tenantId+')'); o.value=t.tenantId; if(t.tenantId===selTenant)o.selected=true; sel.appendChild(o);});
+      sel.onchange=function(){selTenant=sel.value; show();}; bar.appendChild(sel);
+      var er=el('div','', 'row envs'); c.envs.forEach(function(e){var b=el('button',e); if(e===selEnv)b.className='on'; b.onclick=function(){selEnv=e; show();}; er.appendChild(b);}); bar.appendChild(er);
+      if(selEnv==='production'){ bar.appendChild(el('div','Production keys move real money. Changes ask you to type PRODUCTION.','k')); }
+      v.appendChild(bar);
+      api('/superadmin/providers?tenantId='+encodeURIComponent(selTenant)).then(function(d){
+        var have={}; (d.rows||[]).forEach(function(r){ have[r.provider+'|'+r.env]=r; });
+        Object.keys(c.providers).forEach(function(pk){
+          var p=c.providers[pk], row=have[pk+'|'+selEnv]||null;
+          var box=el('div','', 'card'+(selEnv==='production'?' prod':'')); box.appendChild(el('h3',p.label));
+          box.appendChild(el('div',row?('Saved · updated by '+(row.updatedBy||'-')+' · '+(row.active?'active':'disabled')):'Not set for this environment','k'));
+          var g=el('div','', 'grid'); box.appendChild(g);
+          p.fields.forEach(function(f){
+            var cur=row?(f.secret?(row.secretsMasked&&row.secretsMasked[f.name]):(row.plain&&row.plain[f.name])):'';
+            var i=field(g,f.name+(f.secret?' (secret)':''),'f_'+pk+'_'+f.name,f.secret?'password':'text',cur?(f.secret?cur+' — leave blank to keep':cur):'');
+            i.autocomplete='off'; if(!f.secret&&cur) i.value=cur;
+          });
+          var r=el('div','', 'row'); var sb=el('button','Save','pri'); sb.onclick=function(){ saveProvider(pk,p); }; r.appendChild(sb);
+          if(row){ var tb=el('button',row.active?'Disable':'Enable'); tb.onclick=function(){ post('/superadmin/providers/active',{tenantId:selTenant,provider:pk,env:selEnv,active:!row.active}).then(function(x){ if(x.success){msg('Updated.','ok');show();} else msg(x.message||'Failed.','err'); }); }; r.appendChild(tb); }
+          box.appendChild(r); v.appendChild(box);
+        });
+      });
+    }).catch(function(){msg('Network error.','err');});
+  });
+}
+function saveProvider(pk,p){
+  var fields={}; p.fields.forEach(function(f){ var i=document.getElementById('f_'+pk+'_'+f.name); if(i&&i.value.trim()) fields[f.name]=i.value.trim(); });
+  var body={tenantId:selTenant,provider:pk,env:selEnv,fields:fields};
+  if(selEnv==='production'){ var t=prompt('This changes PRODUCTION keys. Type PRODUCTION to continue:'); if(t!=='PRODUCTION'){msg('Cancelled.');return;} body.confirm='PRODUCTION'; }
+  post('/superadmin/providers',body).then(function(d){ if(d.success){ msg('Saved: '+d.changed.join(', '),'ok'); show(); } else msg(d.message||'Could not save.','err'); }).catch(function(){msg('Network error.','err');});
+}
+function viewAudit(v){
+  api('/superadmin/audit').then(function(d){
+    if(!d.success){ msg(d.message||'Could not load.','err'); return; }
+    if(!d.rows.length){ v.appendChild(el('div','No activity yet.','card')); return; }
+    d.rows.forEach(function(r){
+      var c=el('div','', 'card'); c.appendChild(el('b',r.action)); 
+      c.appendChild(document.createTextNode('  '+[r.tenantId,r.provider,r.env].filter(Boolean).join(' · ')));
+      var d2=el('div',(r.detail||'')+' — '+r.who+' — '+new Date(r.createdAt).toLocaleString('en-IN'),'k'); c.appendChild(d2); v.appendChild(c);
+    });
+  });
+}
+(function(){
+  if(!tok()){ msg('Please sign in at bankme.co.in as the Super Admin first, then open this page again.','err'); return; }
+  api('/superadmin/me').then(function(d){
+    if(!d.success){ msg(d.message||'Access denied.','err'); return; }
+    tabs(); show();
+  }).catch(function(){ msg('Network error. Try again.','err'); });
+})();
+</script></body></html>
