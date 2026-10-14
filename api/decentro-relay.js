@@ -16,6 +16,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { path } = req.query;
       const targetUrl = path.startsWith('http') ? path : decentroBase(path) + path;
+      res.setHeader('x-decentro-host', String(targetUrl).split('/')[2]); // RELAY_HOSTHDR_V1
       const response = await fetch(targetUrl, {
         method: 'GET',
         headers: {
@@ -33,6 +34,7 @@ export default async function handler(req, res) {
 
     const { path, body, headers: customHeaders } = req.body;
     const targetUrl = path.startsWith('http') ? path : decentroBase(path) + path;
+    res.setHeader('x-decentro-host', String(targetUrl).split('/')[2]); // RELAY_HOSTHDR_V1
 
     // If customHeaders provided, forward those exactly (generic passthrough mode)
     // Otherwise, fall back to original Decentro-specific headers for backward compatibility
