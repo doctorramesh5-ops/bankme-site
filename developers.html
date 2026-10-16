@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BankMe Developers – Payout API</title>
+<meta name="description" content="BankMe Payout API documentation: authentication, endpoints, webhooks, limits, errors and sandbox testing.">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#040810;--bg2:#080f1a;--bg3:#0d1520;--border:#142030;--border2:#1e3050;--text:#e8f0fe;--muted:#7090b0;--muted2:#9db3cc;--rtai:#00d4aa;--rtai2:#0099ff;--red:#dc2626;--green:#10b981;--gold:#f59e0b;--codebg:#050b14;--codetext:#d7e6f7;--pillbg:rgba(0,212,170,.1)}
+html[data-theme="light"]{--bg:#ffffff;--bg2:#f5f8fc;--bg3:#eef3f9;--border:#dde5ee;--border2:#c6d3e2;--text:#0f1d2e;--muted:#5a6d82;--muted2:#46586c;--rtai:#008a6e;--rtai2:#0a62c9;--codebg:#0d1b2b;--codetext:#d7e6f7;--pillbg:rgba(0,138,110,.1)}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 'DM Sans',system-ui,sans-serif}
+a{color:var(--rtai);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{font-family:'Syne',system-ui,sans-serif;line-height:1.2}
+/* top bar */
+.top{position:fixed;top:0;left:0;right:0;height:64px;z-index:50;display:flex;align-items:center;gap:18px;padding:0 24px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.brand{font:800 22px 'Syne',sans-serif;letter-spacing:.5px;color:var(--text)}
+.brand b{color:var(--rtai2)}.brand i{color:var(--red);font-style:normal}
+.brand:hover{text-decoration:none}
+.top .crumb{color:var(--muted);font-size:14px;border-left:1px solid var(--border2);padding-left:18px}
+.top .sp{flex:1}
+.top a.lnk{color:var(--muted2);font-size:14px}
+.iconbtn{background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:9px;height:36px;min-width:36px;padding:0 12px;cursor:pointer;font:600 13px 'DM Sans',sans-serif}
+.iconbtn:hover{border-color:var(--rtai)}
+.cta{background:linear-gradient(135deg,var(--rtai),var(--rtai2));color:#001018;font-weight:700;border-radius:100px;padding:8px 18px;font-size:14px}
+.cta:hover{text-decoration:none;opacity:.9}
+.menu{display:none}
+/* layout */
+.shell{display:grid;grid-template-columns:268px minmax(0,1fr);padding-top:64px;min-height:100vh}
+aside{position:sticky;top:64px;height:calc(100vh - 64px);overflow:auto;border-right:1px solid var(--border);background:var(--bg2);padding:22px 16px 40px}
+aside h4{margin:20px 10px 6px;font:700 11px 'DM Sans',sans-serif;letter-spacing:1.3px;color:var(--muted);text-transform:uppercase}
+aside h4:first-child{margin-top:0}
+aside a{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted2);font-size:14px;padding:7px 10px;border-radius:8px;text-decoration:none}
+aside a:hover{background:var(--bg3);color:var(--text)}
+aside a.on{background:var(--pillbg);color:var(--rtai);font-weight:600}
+.badge{font:700 10px 'DM Sans',sans-serif;letter-spacing:.5px;padding:2px 7px;border-radius:5px;color:#fff}
+.b-get{background:#0f9d6a}.b-post{background:#2563eb}
+main{min-width:0}
+.sec{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,470px);gap:36px;padding:44px 40px;border-bottom:1px solid var(--border);align-items:start}
+.sec.one{grid-template-columns:minmax(0,860px)}
+.doc h1{font-size:clamp(30px,4vw,42px);margin:0 0 12px;letter-spacing:-.5px}
+.doc h2{font-size:clamp(24px,3vw,30px);margin:0 0 6px}
+.doc h3{font-size:17px;margin:26px 0 6px}
+.doc p.lead{font-size:18px;color:var(--muted2);margin:0 0 18px}
+.doc p,.doc li{color:var(--muted2)}
+.doc li{margin:4px 0}
+.doc b,.doc strong{color:var(--text)}
+.endpoint{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;margin:0 0 16px;font:14px ui-monospace,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.tag{display:inline-block;background:var(--pillbg);color:var(--rtai);border:1px solid color-mix(in srgb,var(--rtai) 35%,transparent);padding:2px 10px;border-radius:100px;font-size:12px;font-weight:600;margin-bottom:14px}
+code{font:13px ui-monospace,Menlo,Consolas,monospace;background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border-radius:5px;color:var(--text)}
+.tw{overflow-x:auto;margin:12px 0 18px;border:1px solid var(--border);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--muted2)}
+th{background:var(--bg2);color:var(--text);font-weight:600}
+tr:last-child td{border-bottom:0}
+td:first-child{white-space:nowrap}
+.note{border:1px solid var(--border2);border-left:4px solid var(--rtai);background:var(--bg2);border-radius:8px;padding:12px 16px;margin:16px 0}
+.note.warn{border-left-color:var(--gold)}
+.note p{margin:0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}
+.card{border:1px solid var(--border);background:var(--bg2);border-radius:12px;padding:14px 16px}
+.card b{display:block;margin-bottom:3px;color:var(--text)}
+.card span{font-size:14px;color:var(--muted2)}
+/* code panel */
+.panel{position:sticky;top:84px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.pill{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:8px 10px;font:13px ui-monospace,Menlo,monospace;color:var(--muted2)}
+.pill .env{background:var(--pillbg);color:var(--rtai);font:700 11px 'DM Sans',sans-serif;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.pill .env.prod{background:rgba(220,38,38,.12);color:#f87171}
+.pill .url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:var(--text)}
+.codebox{background:var(--codebg);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+.tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid #1b2c40;background:#08111d}
+.tabs button{background:none;border:0;color:#8ea6c0;padding:8px 12px;font:600 13px 'DM Sans',sans-serif;cursor:pointer;border-radius:8px 8px 0 0}
+.tabs button.on{color:#fff;background:var(--codebg)}
+.tabs .sp{flex:1}
+.cb-head{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#08111d;border-bottom:1px solid #1b2c40;color:#8ea6c0;font:600 12px 'DM Sans',sans-serif}
+.cb-head .ok{color:#34d399;font-weight:700}
+.copy{background:#14253a;border:1px solid #29415c;color:#cfe0f3;border-radius:6px;font:600 11px 'DM Sans',sans-serif;padding:3px 9px;cursor:pointer}
+.copy:hover{background:#1c3350}
+pre{margin:0;padding:14px 16px;overflow:auto;max-height:430px;color:var(--codetext);font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}
+pre code{background:none;border:0;padding:0;color:inherit;font:inherit}
+.k{color:#7dd3fc}.s{color:#a7f3d0}.n{color:#fbbf24}
+footer{padding:28px 40px;color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;border-top:1px solid var(--border);background:var(--bg2)}
+@media (max-width:1180px){.sec{grid-template-columns:minmax(0,1fr)}.panel{position:static}}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  aside{position:fixed;left:0;top:64px;bottom:0;width:280px;height:auto;z-index:40;transform:translateX(-102%);transition:transform .2s}
+  aside.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
+  .menu{display:inline-block}
+  .top .crumb,.top a.lnk,#copyPage{display:none}
+  .sec{padding:30px 18px}footer{padding:22px 18px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <button class="iconbtn menu" id="menuBtn" aria-label="Open menu">Menu</button>
+  <a class="brand" href="/" aria-label="BankMe home"><b>BANK</b><i>ME</i></a>
+  <span class="crumb">Developers</span>
+  <span class="sp"></span>
+  <a class="lnk" href="/">Back to bankme.co.in</a>
+  <button class="iconbtn" id="copyPage" title="Copy this page as text">Copy page</button>
+  <button class="iconbtn" id="themeBtn" aria-label="Switch light or dark mode">Light</button>
+</header>
+
+<div class="shell">
+<aside id="side">
+  <h4>API Docs</h4>
+  <a href="#start">Get started</a>
+  <h4>Guides</h4>
+  <a href="#environments">Environments</a>
+  <a href="#auth">Authentication</a>
+  <a href="#errors">Status and error codes</a>
+  <a href="#limits">Limits and fees</a>
+  <h4>Payout API</h4>
+  <a href="#payout">Create payout <span class="badge b-post">POST</span></a>
+  <a href="#status">Payout status <span class="badge b-get">GET</span></a>
+  <a href="#balance">Wallet balance <span class="badge b-get">GET</span></a>
+  <a href="#ip">Your IP address <span class="badge b-get">GET</span></a>
+  <h4>Webhooks</h4>
+  <a href="#webhooks">Events and signature</a>
+  <a href="#whverify">Verify a webhook</a>
+  <a href="#whtest">Send a test webhook <span class="badge b-post">POST</span></a>
+  <h4>Go live</h4>
+  <a href="#sandbox">Sandbox testing</a>
+  <a href="#golive">Go-live checklist</a>
+</aside>
+
+<main id="content">
+
+<!-- GET STARTED -->
+<section class="sec" id="start">
+  <div class="doc">
+    <span class="tag">Payout API v1</span>
+    <h1>Build with the BankMe Payout API</h1>
+    <p class="lead">Send money from your BankMe wallet to any bank account (IMPS or NEFT) or UPI ID with one HTTPS call, and get a signed webhook when the payout settles.</p>
+    <div class="cards">
+      <div class="card"><b>Simple JSON</b><span>HTTPS requests and JSON responses. Two headers for authentication.</span></div>
+      <div class="card"><b>Idempotent</b><span>The same <code>referenceId</code> never pays twice.</span></div>
+      <div class="card"><b>Signed webhooks</b><span>HMAC-signed results, retried until you acknowledge.</span></div>
+      <div class="card"><b>Sandbox first</b><span>Test with no real money, then switch the base URL.</span></div>
+    </div>
+    <h3>How it works</h3>
+    <ol>
+      <li>BankMe issues you a sandbox key (<code>pk_...</code> and <code>sk_...</code>). Production keys follow after your integration is approved.</li>
+      <li>Your server calls <a href="#payout">Create payout</a> with a unique <code>referenceId</code>.</li>
+      <li>BankMe debits your wallet and sends the money. The result comes back in the response or as a <a href="#webhooks">webhook</a>.</li>
+      <li>If a call times out, ask for the result with <a href="#status">Payout status</a>. Never retry with a new reference.</li>
+    </ol>
+    <p>API access is issued by BankMe. Each key is tied to one wallet and one payout route, with its own per-payout and per-day limits. Contact your BankMe account manager to get your keys.</p>
+  </div>
+  <div class="panel" data-panel="ip" data-resp="ip"></div>
+</section>
+
+<!-- ENVIRONMENTS -->
+<section class="sec one" id="environments">
+  <div class="doc">
+    <h2>Environments</h2>
+    <p class="lead">Two environments, same paths and same code.</p>
+    <div class="tw"><table>
+      <tr><th>Environment</th><th>Base URL</th><th>Does money move?</th></tr>
+      <tr><td>Sandbox</td><td><code>https://sandbox.bankme.co.in</code></td><td>No. Results are simulated and your wallet is never debited.</td></tr>
+      <tr><td>Production</td><td><code>https://api.bankme.co.in</code></td><td>Yes. Your wallet is debited and the beneficiary is paid.</td></tr>
+    </table></div>
+    <p>Keys are not shared between environments. A sandbox key does not work on production, and the other way round. Every response carries an <code>environment</code> field so you can confirm where you are. Use the toggle in the code panels on this page to switch the base URL in every example.</p>
+  </div>
+</section>
+
+<!-- AUTH -->
+<section class="sec one" id="auth">
+  <div class="doc">
+    <h2>Authentication</h2>
+    <p class="lead">Every request carries your key id and secret in two headers.</p>
+    <div class="tw"><table>
+      <tr><th>Header</th><th>Required</th><th>Value</th></tr>
+      <tr><td><code>x-api-key</code></td><td>Yes</td><td>Your key id, starts with <code>pk_</code></td></tr>
+      <tr><td><code>x-api-secret</code></td><td>Yes</td><td>Your secret, starts with <code>sk_</code>. Shown once when the key is created.</td></tr>
+      <tr><td><code>Content-Type</code></td><td>On POST</td><td><code>application/json</code></td></tr>
+    </table></div>
+    <div class="note warn"><p><b>Keep the secret on your server.</b> Never put it in a mobile app, a web page or a public repository. If it leaks, ask BankMe to rotate it straight away.</p></div>
+    <h3>IP allowlist</h3>
+    <p>Production keys only work from the server IP addresses you give BankMe. Calls from any other address are rejected. Call <a href="#ip">GET /v1/ip</a> from your server to see the address BankMe sees.</p>
+    <h3>Rate limit</h3>
+    <p>120 requests per minute per key.</p>
+  </div>
+</section>
+
+<!-- PAYOUT -->
+<section class="sec" id="payout">
+  <div class="doc">
+    <span class="tag">Writes money</span>
+    <h2>Create payout</h2>
+    <div class="endpoint"><span class="badge b-post">POST</span>/v1/payout</div>
+    <p class="lead">Send money to a bank account or UPI ID.</p>
+    <h3>Request body</h3>
+    <div class="tw"><table>
+      <tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+      <tr><td><code>referenceId</code></td><td>string</td><td>Required. Your own unique id for this payout. It is the idempotency key.</td></tr>
+      <tr><td><code>amount</code></td><td>integer</td><td>Required. Whole rupees, minimum 100.</td></tr>
+      <tr><td><code>beneficiary</code></td><td>object</td><td>Required. Bank or UPI, see below.</td></tr>
+      <tr><td><code>remarks</code></td><td>string</td><td>Optional. Up to 60 characters.</td></tr>
+    </table></div>
+    <h3>Beneficiary: bank account</h3>
+    <div class="tw"><table>
+      <tr><th>Field</th><th>Notes</th></tr>
+      <tr><td><code>type</code></td><td><code>"bank"</code></td></tr>
+      <tr><td><code>name</code></td><td>Account holder name. Letters, spaces and dots only.</td></tr>
+      <tr><td><code>accountNumber</code></td><td>9 to 18 digits</td></tr>
+      <tr><td><code>ifsc</code></td><td>Valid IFSC code, for example <code>HDFC0001234</code></td></tr>
+      <tr><td><code>mode</code></td><td><code>"IMPS"</code> (default) or <code>"NEFT"</code></td></tr>
+    </table></div>
+    <h3>Beneficiary: UPI</h3>
+    <div class="tw"><table>
+      <tr><th>Field</th><th>Notes</th></tr>
+      <tr><td><code>type</code></td><td><code>"upi"</code></td></tr>
+      <tr><td><code>name</code></td><td>Beneficiary name</td></tr>
+      <tr><td><code>vpa</code></td><td>UPI ID, for example <code>name@bank</code></td></tr>
+    </table></div>
+    <h3>Response</h3>
+    <div class="tw"><table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td><code>payoutId</code></td><td>BankMe's id for the payout</td></tr>
+      <tr><td><code>referenceId</code></td><td>Your reference, returned unchanged</td></tr>
+      <tr><td><code>amount</code>, <code>fee</code>, <code>totalDebit</code></td><td>Rupees. <code>totalDebit</code> is amount plus fee.</td></tr>
+      <tr><td><code>status</code></td><td><code>pending</code>, <code>processing</code>, <code>success</code> or <code>failed</code></td></tr>
+      <tr><td><code>utr</code></td><td>Bank reference number, filled when the payout succeeds</td></tr>
+      <tr><td><code>reason</code></td><td>Why a payout failed, empty otherwise</td></tr>
+      <tr><td><code>environment</code></td><td><code>sandbox</code> or <code>production</code></td></tr>
+    </table></div>
+    <div class="note"><p><b>Idempotency.</b> If you send a <code>referenceId</code> that already exists, you get the original payout back with <code>"duplicate": true</code>. Nothing new is created or debited.</p></div>
+    <div class="note"><p><b>Debit and refund.</b> A live payout debits <code>amount + fee</code> from your wallet immediately. If the payout fails, the full debit is returned to your wallet. A request that fails validation never debits anything.</p></div>
+  </div>
+  <div class="panel" data-panel="payout" data-resp="payout"></div>
+</section>
+
+<!-- STATUS -->
+<section class="sec" id="status">
+  <div class="doc">
+    <h2>Payout status</h2>
+    <div class="endpoint"><span class="badge b-get">GET</span>/v1/payout/{referenceId}</div>
+    <p class="lead">Fetch a payout by your own reference, plus the delivery state of its webhook.</p>
+    <p>Use this when a request timed out and you do not know if it arrived, or when you want to confirm a payout without waiting for the webhook. The <code>webhook</code> object shows <code>status</code>, <code>attempts</code> and <code>lastError</code> for the delivery of this payout's result.</p>
+    <div class="note"><p>If you are unsure whether a create call reached BankMe, call this endpoint first. Do not create a new payout with a new reference.</p></div>
+  </div>
+  <div class="panel" data-panel="status" data-resp="status"></div>
+</section>
+
+<!-- BALANCE -->
+<section class="sec" id="balance">
+  <div class="doc">
+    <h2>Wallet balance</h2>
+    <div class="endpoint"><span class="badge b-get">GET</span>/v1/balance</div>
+    <p class="lead">The current balance of the wallet your key pays from, in rupees.</p>
+    <p>Check it before large batches. In the sandbox the balance is virtual and is never debited.</p>
+  </div>
+  <div class="panel" data-panel="balance" data-resp="balance"></div>
+</section>
+
+<!-- IP -->
+<section class="sec" id="ip">
+  <div class="doc">
+    <h2>Your IP address</h2>
+    <div class="endpoint"><span class="badge b-get">GET</span>/v1/ip</div>
+    <p class="lead">Returns the public IP address BankMe sees for your request. No keys needed.</p>
+    <p>Run it from your production server, then give that address to BankMe to add to your allowlist.</p>
+  </div>
+  <div class="panel" data-panel="ip" data-resp="ip"></div>
+</section>
+
+<!-- LIMITS -->
+<section class="sec one" id="limits">
+  <div class="doc">
+    <h2>Limits and fees</h2>
+    <div class="tw"><table>
+      <tr><th>Item</th><th>Value</th></tr>
+      <tr><td>Minimum per payout</td><td>Rs 100</td></tr>
+      <tr><td>Maximum per payout</td><td>Up to Rs 2,00,000. Your key may have a lower limit.</td></tr>
+      <tr><td>Daily limit</td><td>Rs 5,00,000 by default, set per key. The day resets at midnight IST.</td></tr>
+      <tr><td>Fee</td><td>Slab based, from Rs 10 to Rs 100 per payout, GST included. The exact fee is returned in <code>fee</code>.</td></tr>
+      <tr><td>Rate limit</td><td>120 requests per minute per key</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ERRORS -->
+<section class="sec one" id="errors">
+  <div class="doc">
+    <h2>Status and error codes</h2>
+    <p class="lead">Failed requests return a non-2xx status and JSON with <code>"success": false</code>, a <code>code</code> and a readable <code>message</code>.</p>
+    <div class="tw"><table>
+      <tr><th>Code</th><th>When it happens</th></tr>
+      <tr><td><code>AUTH_REQUIRED</code></td><td>Missing, wrong or disabled key or secret, or the call came from an IP that is not allowed.</td></tr>
+      <tr><td><code>INVALID_AMOUNT</code></td><td>Amount is not a whole number, or is below Rs 100.</td></tr>
+      <tr><td><code>INVALID_BENEFICIARY</code></td><td>A beneficiary field is missing or badly formatted. The message names the field.</td></tr>
+      <tr><td><code>LIMIT_PER_TXN</code></td><td>Amount is above the per-payout limit.</td></tr>
+      <tr><td><code>LIMIT_PER_DAY</code></td><td>The daily limit would be exceeded. The message shows what is left today.</td></tr>
+      <tr><td><code>INSUFFICIENT_BALANCE</code></td><td>The wallet cannot cover amount plus fee.</td></tr>
+      <tr><td><code>RAIL_UNAVAILABLE</code></td><td>The payout route for your key is not available right now. Try again later.</td></tr>
+      <tr><td><code>OWNER_NOT_FOUND</code></td><td>The wallet owner for the key was not found. Contact BankMe.</td></tr>
+    </table></div>
+    <p>A request that fails validation never debits your wallet. For a timeout or a network error, check <a href="#status">Payout status</a> before doing anything else.</p>
+  </div>
+</section>
+
+<!-- WEBHOOKS -->
+<section class="sec" id="webhooks">
+  <div class="doc">
+    <h2>Webhooks</h2>
+    <p class="lead">BankMe posts the result of each payout to the HTTPS URL registered for your key. Use it instead of polling.</p>
+    <h3>Events</h3>
+    <div class="tw"><table>
+      <tr><th>Event</th><th>Sent when</th></tr>
+      <tr><td><code>payout.success</code></td><td>A payout was paid</td></tr>
+      <tr><td><code>payout.failed</code></td><td>A payout failed and was refunded</td></tr>
+      <tr><td><code>webhook.test</code></td><td>A test delivery was requested</td></tr>
+    </table></div>
+    <h3>Headers on every delivery</h3>
+    <div class="tw"><table>
+      <tr><th>Header</th><th>Value</th></tr>
+      <tr><td><code>x-bankme-event</code></td><td>The event name</td></tr>
+      <tr><td><code>x-bankme-timestamp</code></td><td>Unix time of the delivery</td></tr>
+      <tr><td><code>x-bankme-signature</code></td><td><code>sha256=</code> followed by the hex HMAC-SHA256 of <code>timestamp + "." + rawBody</code>, keyed with your signing secret (starts with <code>whsec_</code>)</td></tr>
+    </table></div>
+    <h3>Delivery rules</h3>
+    <ul>
+      <li>Reply with any <code>2xx</code> status within a few seconds to acknowledge. Anything else counts as a failure.</li>
+      <li>Failed deliveries are retried automatically, so you can receive the same event more than once. Make your handler idempotent by looking up the payout by <code>referenceId</code>.</li>
+      <li>The webhook URL must be <code>https</code> and use a public domain name. IP addresses, localhost and private networks are rejected.</li>
+      <li>If your firewall limits inbound traffic, allow BankMe's outbound ranges: <code>74.220.52.0/24</code> and <code>74.220.60.0/24</code>.</li>
+      <li>A lost webhook never loses the result. Fetch it any time with <a href="#status">Payout status</a>.</li>
+    </ul>
+  </div>
+  <div class="panel" data-panel="verify"></div>
+</section>
+
+<section class="sec" id="whverify">
+  <div class="doc">
+    <h2>Verify a webhook</h2>
+    <p class="lead">Always check the signature before you trust a delivery.</p>
+    <ol>
+      <li>Read the <b>raw</b> request body as received. Do not parse and re-encode it first.</li>
+      <li>Build the string <code>timestamp + "." + rawBody</code>.</li>
+      <li>Compute HMAC-SHA256 of it with your <code>whsec_</code> secret and compare with <code>x-bankme-signature</code> in constant time.</li>
+      <li>Reject deliveries whose timestamp is more than 5 minutes old.</li>
+      <li>Process the event, then reply <code>200</code>.</li>
+    </ol>
+    <div class="note warn"><p>Store your <code>whsec_</code> secret in server-side configuration, never in code. If it leaks, ask BankMe to rotate it.</p></div>
+  </div>
+  <div class="panel" data-panel="verify"></div>
+</section>
+
+<section class="sec" id="whtest">
+  <div class="doc">
+    <h2>Send a test webhook</h2>
+    <div class="endpoint"><span class="badge b-post">POST</span>/v1/webhook/test</div>
+    <p class="lead">Sends a signed <code>webhook.test</code> delivery to your registered URL so you can check your handler end to end.</p>
+    <p>Works in the sandbox and in production. Your endpoint should verify the signature and reply <code>200</code> exactly as for a real event.</p>
+  </div>
+  <div class="panel" data-panel="whtest"></div>
+</section>
+
+<!-- SANDBOX -->
+<section class="sec one" id="sandbox">
+  <div class="doc">
+    <h2>Sandbox testing</h2>
+    <p class="lead">The sandbox behaves like production but never moves money and never debits a wallet.</p>
+    <div class="tw"><table>
+      <tr><th>You want</th><th>Send</th></tr>
+      <tr><td>Success</td><td>Any valid beneficiary, for example account <code>123456789012</code></td></tr>
+      <tr><td>Failure</td><td>A bank account number ending in <code>0000</code>, or a UPI ID starting with <code>fail</code>. The result is <code>failed</code> with the reason "Sandbox: simulated failure".</td></tr>
+      <tr><td>Duplicate</td><td>Send the same <code>referenceId</code> twice. The second response has <code>"duplicate": true</code>.</td></tr>
+    </table></div>
+    <p>Sandbox payouts carry <code>"environment": "sandbox"</code> and a UTR starting with <code>SBX</code>. Webhooks are delivered from the sandbox too and signed the same way.</p>
+  </div>
+</section>
+
+<!-- GO LIVE -->
+<section class="sec one" id="golive">
+  <div class="doc">
+    <h2>Go-live checklist</h2>
+    <ol>
+      <li>Your integration passes the sandbox tests: success, failure, duplicate and webhook handling.</li>
+      <li>Your API secret and webhook signing secret are in server-side configuration.</li>
+      <li>Every payout uses a new, unique <code>referenceId</code>. You reuse one only to retry the same payout.</li>
+      <li>You called <a href="#ip">GET /v1/ip</a> from your production server and gave that IP address to BankMe.</li>
+      <li>Your webhook endpoint verifies the signature and replies with <code>2xx</code>.</li>
+      <li>BankMe issues your production key. Change the base URL to <code>https://api.bankme.co.in</code> and use the production key and secret.</li>
+      <li>Make a first small live payout (Rs 100) and confirm the UTR before going to volume.</li>
+    </ol>
+    <div class="note"><p>Payouts are paid from your own BankMe wallet. Keep it funded before you send live payouts.</p></div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <span>&copy; PAYPE Technologies Pvt. Ltd. &middot; BankMe &middot; Powered by RTAI</span>
+  <span><a href="/">bankme.co.in</a></span>
+</footer>
+
+<script>
+(function(){
+  var ENVS={sandbox:'https://sandbox.bankme.co.in',production:'https://api.bankme.co.in'};
+  var state={env:'sandbox',lang:'curl',theme:'dark'};
+  try{var t=localStorage.getItem('bm-dev-theme');if(t)state.theme=t;var l=localStorage.getItem('bm-dev-lang');if(l)state.lang=l;}catch(e){}
+  document.documentElement.setAttribute('data-theme',state.theme);
+
+  var EP={
+    ip:{method:'GET',path:'/v1/ip',auth:false},
+    balance:{method:'GET',path:'/v1/balance',auth:true},
+    status:{method:'GET',path:'/v1/payout/ORDER-100045',auth:true},
+    payout:{method:'POST',path:'/v1/payout',auth:true,body:{referenceId:'ORDER-100045',amount:500,beneficiary:{type:'bank',name:'Test User',accountNumber:'123456789012',ifsc:'HDFC0001234',mode:'IMPS'}}},
+    whtest:{method:'POST',path:'/v1/webhook/test',auth:true}
+  };
+  var RESP={
+    ip:{title:'200 Example response',json:{success:true,ip:'203.0.113.10',environment:'sandbox'}},
+    balance:{title:'200 Example response',json:{success:true,environment:'sandbox',balance:100000}},
+    status:{title:'200 Example response',json:{success:true,payout:{payoutId:'PO1792124118632685',referenceId:'ORDER-100045',amount:500,fee:10,totalDebit:510,status:'success',mode:'IMPS',utr:'SBX1792124118632',reason:'',environment:'sandbox',createdAt:'2026-10-16T04:15:18.633Z'},webhook:{status:'none',attempts:0,lastError:''}}},
+    payout:{title:'200 Example response',json:{success:true,payout:{payoutId:'PO1792124118632685',referenceId:'ORDER-100045',amount:500,fee:10,totalDebit:510,status:'success',mode:'IMPS',utr:'SBX1792124118632',reason:'',environment:'sandbox',createdAt:'2026-10-16T04:15:18.633Z'},note:'Sandbox: no real money moved.'}}
+  };
+  var VERIFY={
+    node:"const crypto = require('crypto');\nconst express = require('express');\nconst app = express();\n\n// Use the RAW body. Do not parse it before verifying.\napp.post('/bankme-webhook', express.raw({ type: 'application/json' }), (req, res) => {\n  const ts  = req.header('x-bankme-timestamp');\n  const sig = req.header('x-bankme-signature') || '';\n  const expected = 'sha256=' + crypto\n    .createHmac('sha256', process.env.BANKME_WHSEC)\n    .update(ts + '.' + req.body.toString('utf8'))\n    .digest('hex');\n\n  const ok = sig.length === expected.length &&\n    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n  if (!ok) return res.status(401).send('bad signature');\n\n  // Reject old deliveries (replay protection): 5 minutes\n  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return res.status(400).send('stale');\n\n  const event = JSON.parse(req.body.toString('utf8'));\n  // ...update your order from event, then acknowledge:\n  res.sendStatus(200);\n});",
+    python:"import hmac, hashlib, os, time\nfrom flask import Flask, request, abort\n\napp = Flask(__name__)\n\n@app.post('/bankme-webhook')\ndef bankme_webhook():\n    raw = request.get_data()                      # RAW body\n    ts = request.headers.get('x-bankme-timestamp', '')\n    sig = request.headers.get('x-bankme-signature', '')\n    expected = 'sha256=' + hmac.new(\n        os.environ['BANKME_WHSEC'].encode(),\n        (ts + '.').encode() + raw,\n        hashlib.sha256).hexdigest()\n\n    if not hmac.compare_digest(sig, expected):\n        abort(401)\n    if abs(time.time() - int(ts)) > 300:         # replay protection\n        abort(400)\n\n    event = request.get_json(force=True)\n    # ...update your order from event, then acknowledge:\n    return '', 200",
+    php:"<?php\n$raw = file_get_contents('php://input');          // RAW body\n$ts  = $_SERVER['HTTP_X_BANKME_TIMESTAMP'] ?? '';\n$sig = $_SERVER['HTTP_X_BANKME_SIGNATURE'] ?? '';\n\n$expected = 'sha256=' . hash_hmac('sha256', $ts . '.' . $raw, getenv('BANKME_WHSEC'));\n\nif (!hash_equals($expected, $sig)) {\n    http_response_code(401); exit('bad signature');\n}\nif (abs(time() - (int)$ts) > 300) {                 // replay protection\n    http_response_code(400); exit('stale');\n}\n\n$event = json_decode($raw, true);\n// ...update your order from $event, then acknowledge:\nhttp_response_code(200);"
+  };
+  var LANGS=[['curl','cURL'],['node','Node.js'],['python','Python'],['php','PHP']];
+
+  function pretty(o){return JSON.stringify(o,null,2);}
+  function snippet(ep,lang,base){
+    var url=base+ep.path, b=ep.body?pretty(ep.body):'', post=ep.method==='POST';
+    if(lang==='curl'){
+      var s='curl'+(post?' -X POST':'')+" "+url;
+      if(ep.auth){s+=" \\\n  -H 'x-api-key: YOUR_KEY_ID' \\\n  -H 'x-api-secret: YOUR_SECRET'";}
+      if(post&&ep.body){s+=" \\\n  -H 'Content-Type: application/json' \\\n  -d '"+b+"'";}
+      return s;
+    }
+    if(lang==='node'){
+      var h=ep.auth?"    'x-api-key': process.env.BANKME_KEY,\n    'x-api-secret': process.env.BANKME_SECRET"+(post&&ep.body?",\n    'Content-Type': 'application/json'":""):"";
+      var s2="const res = await fetch('"+url+"', {\n  method: '"+ep.method+"'"+(h?",\n  headers: {\n"+h+"\n  }":"");
+      if(post&&ep.body){s2+=",\n  body: JSON.stringify("+b.replace(/\n/g,"\n  ")+")";}
+      s2+="\n});\nconsole.log(await res.json());";
+      return s2;
+    }
+    if(lang==='python'){
+      var p="import os, requests\n\n";
+      if(ep.auth){p+="headers = {\n    'x-api-key': os.environ['BANKME_KEY'],\n    'x-api-secret': os.environ['BANKME_SECRET'],\n}\n";}
+      if(post&&ep.body){p+="payload = "+b.replace(/"/g,"'").replace(/true/g,'True').replace(/false/g,'False')+"\n";}
+      p+="\nres = requests."+ep.method.toLowerCase()+"(\n    '"+url+"'"+(ep.auth?",\n    headers=headers":"")+(post&&ep.body?",\n    json=payload":"")+"\n)\nprint(res.json())";
+      return p;
+    }
+    var ph="<?php\n$ch = curl_init('"+url+"');\ncurl_setopt_array($ch, [\n  CURLOPT_RETURNTRANSFER => true,\n";
+    if(post)ph+="  CURLOPT_POST => true,\n";
+    var hd=[];
+    if(ep.auth){hd.push("'x-api-key: ' . getenv('BANKME_KEY')");hd.push("'x-api-secret: ' . getenv('BANKME_SECRET')");}
+    if(post&&ep.body)hd.push("'Content-Type: application/json'");
+    if(hd.length)ph+="  CURLOPT_HTTPHEADER => [\n    "+hd.join(",\n    ")+"\n  ],\n";
+    if(post&&ep.body)ph+="  CURLOPT_POSTFIELDS => json_encode("+phpArr(ep.body,1)+"),\n";
+    ph+="]);\n$out = curl_exec($ch);\ncurl_close($ch);\necho $out;";
+    return ph;
+  }
+  function phpArr(o,d){
+    var pad=new Array(d+2).join('  '), end=new Array(d+1).join('  ');
+    var out='[\n';
+    Object.keys(o).forEach(function(k,i,a){
+      var v=o[k], vs=(v&&typeof v==='object')?phpArr(v,d+1):(typeof v==='number'?String(v):"'"+String(v).replace(/'/g,"\\'")+"'");
+      out+=pad+"'"+k+"' => "+vs+(i<a.length-1?',':'')+"\n";
+    });
+    return out+end+']';
+  }
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+  function copyText(txt,btn){
+    var done=function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o;},1400);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done,function(){});}
+    else{var a=document.createElement('textarea');a.value=txt;document.body.appendChild(a);a.select();try{document.execCommand('copy');done();}catch(e){}document.body.removeChild(a);}
+  }
+
+  var panels=[];
+  function build(p){
+    var key=p.getAttribute('data-panel'), respKey=p.getAttribute('data-resp');
+    var pill=el('div','pill'), envb=el('button','env','SANDBOX'), lab=el('span',null,'Base URL'), url=el('span','url','');
+    envb.title='Switch between sandbox and production';
+    pill.appendChild(envb);pill.appendChild(lab);pill.appendChild(url);
+    var box=el('div','codebox'), tabs=el('div','tabs'), pre=el('pre'), code=el('code');
+    var tabBtns=[];
+    var langs=key==='verify'?LANGS.slice(1):LANGS;
+    langs.forEach(function(L){var b=el('button',null,L[1]);b.setAttribute('data-lang',L[0]);b.addEventListener('click',function(){state.lang=L[0];try{localStorage.setItem('bm-dev-lang',L[0]);}catch(e){}renderAll();});tabs.appendChild(b);tabBtns.push(b);});
+    tabs.appendChild(el('span','sp'));
+    var cp=el('button','copy','Copy');tabs.appendChild(cp);
+    pre.appendChild(code);box.appendChild(tabs);box.appendChild(pre);
+    if(key!=='verify')p.appendChild(pill);
+    p.appendChild(box);
+    var respCode=null,respBox=null;
+    if(respKey&&RESP[respKey]){
+      respBox=el('div','codebox');var head=el('div','cb-head');var ttl=el('span');var st=el('b','ok','200');ttl.appendChild(st);ttl.appendChild(document.createTextNode('  Example response'));
+      var rc=el('button','copy','Copy');head.appendChild(ttl);head.appendChild(rc);
+      var rp=el('pre');respCode=el('code');rp.appendChild(respCode);respBox.appendChild(head);respBox.appendChild(rp);p.appendChild(respBox);
+      rc.addEventListener('click',function(){copyText(respCode.textContent,rc);});
+    }
+    envb.addEventListener('click',function(){state.env=state.env==='sandbox'?'production':'sandbox';renderAll();});
+    cp.addEventListener('click',function(){copyText(code.textContent,cp);});
+    panels.push({key:key,respKey:respKey,code:code,respCode:respCode,tabBtns:tabBtns,envb:envb,url:url,langs:langs});
+  }
+  function renderAll(){
+    var base=ENVS[state.env];
+    panels.forEach(function(P){
+      var lang=state.lang;
+      if(P.key==='verify'){if(lang==='curl')lang='node';P.code.textContent=VERIFY[lang];}
+      else{P.code.textContent=snippet(EP[P.key],lang,base);}
+      P.tabBtns.forEach(function(b){b.className=b.getAttribute('data-lang')===lang?'on':'';});
+      P.envb.textContent=state.env.toUpperCase();P.envb.className='env'+(state.env==='production'?' prod':'');
+      P.url.textContent=base;
+      if(P.respCode){var r=JSON.parse(JSON.stringify(RESP[P.respKey].json));
+        if(r.environment)r.environment=state.env;
+        if(r.payout&&r.payout.environment)r.payout.environment=state.env;
+        if(state.env==='production'){if(r.payout){r.payout.utr='';r.payout.status='processing';delete r.note;}}
+        P.respCode.textContent=pretty(r);}
+    });
+  }
+  document.querySelectorAll('[data-panel]').forEach(build);
+  renderAll();
+
+  /* theme */
+  var tb=document.getElementById('themeBtn');
+  function setTheme(t){state.theme=t;document.documentElement.setAttribute('data-theme',t);tb.textContent=t==='dark'?'Light':'Dark';try{localStorage.setItem('bm-dev-theme',t);}catch(e){}}
+  setTheme(state.theme);
+  tb.addEventListener('click',function(){setTheme(state.theme==='dark'?'light':'dark');});
+
+  /* copy page */
+  var cpg=document.getElementById('copyPage');
+  cpg.addEventListener('click',function(){copyText(document.getElementById('content').innerText,cpg);});
+
+  /* mobile menu */
+  var side=document.getElementById('side'), mb=document.getElementById('menuBtn');
+  mb.addEventListener('click',function(){side.classList.toggle('open');});
+  side.addEventListener('click',function(e){if(e.target.tagName==='A'||e.target.closest('a'))side.classList.remove('open');});
+
+  /* active section in sidebar */
+  var links={};side.querySelectorAll('a').forEach(function(a){links[a.getAttribute('href').slice(1)]=a;});
+  var secs=[].slice.call(document.querySelectorAll('section.sec'));
+  function mark(){
+    var y=window.scrollY+120,cur=secs[0];
+    secs.forEach(function(s){if(s.offsetTop<=y)cur=s;});
+    Object.keys(links).forEach(function(k){links[k].classList.remove('on');});
+    if(cur&&links[cur.id])links[cur.id].classList.add('on');
+  }
+  window.addEventListener('scroll',mark,{passive:true});mark();
+})();
+</script>
+</body>
+</html>
