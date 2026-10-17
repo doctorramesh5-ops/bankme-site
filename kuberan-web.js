@@ -100,6 +100,7 @@
     add('bot', S.signed ? 'Namaste! I am Kuberan. Ask me about your KYC, transactions, wallet, charges or commission.' : 'Namaste! I am Kuberan, the BankMe assistant. Ask me about BankMe services, sign-up and how things work. For your own account details, please sign in.');
     var chips = S.signed ? ['Is my KYC done?', 'Show my last transactions', 'My wallet balance', 'AEPS charges'] : ['What services does BankMe offer?', 'How do I sign up?', 'How does KYC work?', 'Talk to support'];
     chips.forEach(function (c) { var x = document.createElement('button'); x.type = 'button'; x.textContent = c; x.onclick = function () { send(c === 'Talk to support' ? 'How can I contact BankMe support?' : c); }; $('kbwC').appendChild(x); });
+    /* KBW_SIGNIN */ if (!S.signed) { var si = document.createElement('button'); si.type = 'button'; si.textContent = 'Sign in to see my account'; si.style.cssText = 'border-color:#f5b82e;color:#f5b82e'; si.onclick = function () { window.location.href = 'app.html'; }; $('kbwC').appendChild(si); }
   }
   function mount() {
     var b = document.createElement('button'); b.id = 'kbwBtn'; b.setAttribute('aria-label', 'Ask Kuberan'); b.innerHTML = '<small>Ask Kuberan</small>'; document.body.appendChild(b);
